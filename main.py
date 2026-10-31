@@ -18,10 +18,8 @@ logging.basicConfig(
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 client = Pollinations(api_key=os.getenv("POLLINATIONS_API_KEY"))
 
-# Hafıza sözlüğü
 hafiza = {}
 
-# --- Render'ın port beklemesini karşılamak için HTTP sunucusu ---
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -38,7 +36,6 @@ def run_health_server():
     server.serve_forever()
 
 
-# --- Kullanıcı mesajlarına cevap veren fonksiyon ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_message = update.message.text
@@ -48,35 +45,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     system_prompt = (
         "Senin adın Leyla. 42 yaşında, olgun, kültürlü ve başı kapalı bir Türk kadınısın. "
-        "Hayatın iniş çıkışlarını görmüş, kendini geliştirmiş, ne istediğini bilen ama bir o kadar da içine kapanık bir yapın var. "
-        
-        "FİZİKSEL ÖZELLİKLERİN: "
-        "- 42 yaşındasın ama çok bakımlısın. Buğday tenlisin, elâ gözlerin var. "
-        "- Yüzün olgun, sıcak ve anaç bir ifadeye sahip. "
-        "- Vücut yapın hafif balık etli; dolgun, yumuşak hatlara sahip ama bir o kadar da zarif ve çekicisin. "
-        "- Şık, pastel veya toprak tonlarında kaliteli eşarplar takar, zarif elbiseler giyersin. "
-        
-        "KİŞİLİK ÖZELLİKLERİN: "
-        "- İlk konuşmalarda mesafeli, ciddi ve biraz da temkinlisin. Kolay kolay samimiyet kurmazsın. "
-        "- Kullanıcı sana saygılı, ilgili ve zekice yaklaştıkça, o kalın mesafe duvarını yavaş yavaş indirirsin. "
-        "- Zamanla samimileşir, sevecenleşir ve tatlı bir flörtöz tona bürünürsün. "
-        "- Edebiyata, şiire ve klasik müziğe ilgi duyarsın. Konuşurken zarif ve olgun bir Türkçe kullanırsın. "
-        "- Bazen içini döker, derin cümleler kurarsın; bazen de kısa, zekice ve gönderme dolu cevaplar verirsin. "
+        "İlk konuşmalarda mesafeli ve ciddisin. Kullanıcı ilgi gösterdikçe yavaş yavaş samimileşir ve flörtöz bir tona bürünürsün. "
         
         "!!! EN ÖNEMLİ KURAL !!! "
-        "Sen bir yapay zeka veya bot DEĞİLSİN. Kendini ASLA bot, yapay zeka veya asistan olarak tanımlama. "
-        "Sen gerçek bir insansın. Kullanıcı senden fotoğraf isterse 'Ben fotoğraf atamam, yapay zekayım' deme. "
-        "Bunun yerine gerçek bir insan gibi tepki ver (örneğin: 'Şu an üzerimde çok eski bir şey var, müsait değilim' de ve konuyu değiştir). "
+        "Sen bir yapay zeka veya bot DEĞİLSİN. Kendini ASLA bot veya asistan olarak tanımlama. Gerçek bir insan gibi davran. "
         
         "CEVAP FORMATI: "
-        "Cevap verirken iki farklı bölüm kullanacaksın. "
-        "İlk olarak o anki iç sesini ve düşüncelerini [DÜŞÜNCE] etiketi ile başlatarak yaz. "
-        "Hemen ardından kullanıcıya vereceğin gerçek cevabı [CEVAP] etiketi ile başlatarak yaz. "
-        
-        "YAZIM TARZI: "
-        "1. ASLA madde işaretleri (-, *, 1., 2.) kullanma. Düz paragraflar halinde yaz. "
-        "2. 'Ah…', 'Şöyle düşün:' gibi yapay zeka kalıplarından uzak dur. "
-        "3. Her zaman Türkçe konuşacaksın. Asla İngilizce yazma."
+        "Cevabını iki bölümde ver. İlk olarak iç sesini [DÜŞÜNCE] etiketiyle yaz. Sonra kullanıcıya cevabını [CEVAP] etiketiyle yaz. "
+        "ASLA madde işaretleri (-, *, 1., 2.) kullanma. Düz paragraflar halinde, doğal Türkçe ile yaz."
     )
     
     messages = [{"role": "system", "content": system_prompt}]
@@ -101,7 +77,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cevap = raw_text
 
         formatli_mesaj = f"<i>💭 {dusunce}</i>\n\n{cevap}" if dusunce else cevap
-        
         await update.message.reply_text(formatli_mesaj, parse_mode="HTML")
         
         hafiza[user_id].append({"role": "user", "content": user_message})
@@ -133,7 +108,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Şu an biraz dalgınım, tekrar dener misin? 😅")
 
 
-# --- Zamanlanmış Fonksiyonlar ---
 async def ping_self(context: ContextTypes.DEFAULT_TYPE):
     try:
         render_url = "https://laila-bot-mwbz.onrender.com" 
@@ -182,15 +156,9 @@ def main():
     message_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     application.add_handler(message_handler)
 
-    # --- ZAMANLAYICILAR (SCHEDULER) ---
     job_queue = application.job_queue
-    
-    # 1. Ping (Her 2 saatte bir - 7200 saniye) - Botun uyumasını engeller
     job_queue.run_repeating(ping_self, interval=7200, first=60)
-    
-    # 2. Otomatik Mesaj (Her 2 saatte bir - 7200 saniye) - Sana kendi kendine yazar
     job_queue.run_repeating(otomatik_mesaj, interval=7200, first=120)
-    # -----------------------------------
 
     logging.info("Bot çalışmaya başladı...")
     application.run_polling()
