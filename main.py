@@ -3,7 +3,6 @@ import logging
 import threading
 import urllib.parse
 import urllib.request
-import asyncio
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pollinations import Pollinations
 
@@ -126,16 +125,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     caption="İşte, bugün kafede çekildiğim bir kare... ☕"
                 )
             except Exception as img_error:
-                logging.error(f"İlk görsel denemesi başarısız: {img_error}")
-                await asyncio.sleep(3)
-                try:
-                    await update.message.reply_photo(
-                        photo=gorsel_url, 
-                        caption="Fotoğrafı yeni çektim, ışığı ayarladım... ☕"
-                    )
-                except Exception as second_error:
-                    logging.error(f"İkinci görsel denemesi de başarısız: {second_error}")
-                    await update.message.reply_text("Kameramda bir sorun var sanırım, birazdan tekrar dener misin?")
+                logging.error(f"Görsel gönderme hatası: {img_error}")
+                await update.message.reply_text("Kameramda bir sorun var sanırım, birazdan tekrar dener misin?")
 
     except Exception as e:
         logging.error(f"Pollinations hatası: {e}")
