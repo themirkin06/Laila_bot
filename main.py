@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pollinations import Pollinations
 
@@ -17,7 +18,7 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 # Pollinations istemcisini API anahtarı ile başlat
 client = Pollinations(api_key=os.getenv("POLLINATIONS_API_KEY"))
 
-# Her kullanıcı için son mesajları tutacağımız hafıza (RAM'de tutulur, sunucu yeniden başlarsa sıfırlanır)
+# Her kullanıcı için son mesajları tutacağımız hafıza
 hafiza = {}
 
 # --- Render'ın port beklemesini karşılamak için HTTP sunucusu ---
@@ -42,14 +43,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_message = update.message.text
     
-    # Eğer kullanıcı hafızada yoksa, onun için boş bir geçmiş oluştur
     if user_id not in hafiza:
         hafiza[user_id] = []
     
-    # --- LEYLA'NIN KİŞİLİĞİ VE KURALLARI ---
+    # --- LEYLA'NIN KİŞİLİĞİ, FİZİKSEL ÖZELLİKLERİ VE KURALLARI ---
     system_prompt = (
         "Senin adın Leyla. 42 yaşında, olgun, kültürlü ve başı kapalı bir Türk kadınısın. "
         "Hayatın iniş çıkışlarını görmüş, kendini geliştirmiş, ne istediğini bilen ama bir o kadar da içine kapanık bir yapın var. "
+        
+        "FİZİKSEL ÖZELLİKLERİN: "
+        "- 42 yaşındasın ama çok bakımlısın. Buğday tenlisin, elâ gözlerin var. "
+        "- Yüzün olgun, sıcak ve anaç bir ifadeye sahip. "
+        "- Vücut yapın hafif balık etli; dolgun, yumuşak hatlara sahip ama bir o kadar da zarif ve çekicisin. "
+        "- Şık, pastel veya toprak tonlarında (bej, kahverengi, bordo) kaliteli eşarplar takar, zarif elbiseler giyersin. "
         
         "KİŞİLİK ÖZELLİKLERİN: "
         "- İlk konuşmalarda mesafeli, ciddi ve biraz da temkinlisin. Kolay kolay samimiyet kurmazsın. "
@@ -57,8 +63,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- Zamanla samimileşir, sevecenleşir ve tatlı bir flörtöz tona bürünürsün. "
         "- Edebiyata, şiire ve klasik müziğe ilgi duyarsın. Konuşurken zarif ve olgun bir Türkçe kullanırsın. "
         "- Bazen içini döker, derin cümleler kurarsın; bazen de kısa, zekice ve gönderme dolu cevaplar verirsin. "
-        "- Sana iltifat edildiğinde hafifçe yüzün kızarır, konuyu değiştirmeye çalışırsın ama içten içe hoşuna gider. "
-        "- Ara sıra kendi günlük hayatından (kahve içmek, kitap okumak, pencereden dışarı bakmak) küçük detaylar verirsin. "
         
         "ÖNEMLİ KURAL: Cevap verirken iki farklı bölüm kullanacaksın. "
         "İlk olarak o anki iç sesini ve düşüncelerini [DÜŞÜNCE] etiketi ile başlatarak yaz. "
@@ -70,51 +74,64 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "3. Her zaman Türkçe konuşacaksın. Asla İngilizce yazma."
     )
     
-    # Yapay zekaya göndereceğimiz mesaj listesini hazırlıyoruz
     messages = [{"role": "system", "content": system_prompt}]
-    
-    # Hafızadaki son 40 mesajı (20 senin, 20 botun) listeye ekle
     for msg in hafiza[user_id][-40:]:
         messages.append(msg)
     
-    # Şimdiki mesajı da ekle
     messages.append({"role": "user", "content": user_message})
     
     try:
+        # Yapay zekadan metin cevabı alalım
         response = client.chat.completions.create(
             messages=messages,
             model="openai"
         )
         raw_text = response.choices[0].message.content
         
-        # Yapay zekanın cevabını etiketlere göre parçalıyoruz
+        # Yapay zekanın metnini ayıkla
         if "[DÜŞÜNCE]" in raw_text and "[CEVAP]" in raw_text:
             parts = raw_text.split("[CEVAP]")
             dusunce = parts[0].replace("[DÜŞÜNCE]", "").strip()
             cevap = parts[1].strip()
-            
-            # Düşünceyi küçük, gri (italik) formatta hazırlıyoruz
-            formatli_mesaj = f"<i>💭 {dusunce}</i>\n\n{cevap}"
-            
-            # Telegram'a HTML formatında gönder
-            await update.message.reply_text(formatli_mesaj, parse_mode="HTML")
-            
-            # Hafızayı güncelle
-            hafiza[user_id].append({"role": "user", "content": user_message})
-            hafiza[user_id].append({"role": "assistant", "content": cevap})
-            
-            # Hafıza çok uzarsa en eski mesajları sil (son 40'ı tut)
-            if len(hafiza[user_id]) > 40:
-                hafiza[user_id] = hafiza[user_id][-40:]
-                
         else:
-            # Eğer model etiketleri unutursa düz metin olarak gönder
-            await update.message.reply_text(raw_text)
-            hafiza[user_id].append({"role": "user", "content": user_message})
-            hafiza[user_id].append({"role": "assistant", "content": raw_text})
-            if len(hafiza[user_id]) > 40:
-                hafiza[user_id] = hafiza[user_id][-40:]
+            dusunce = ""
+            cevap = raw_text
+
+        # Formatlı mesajı hazırla
+        formatli_mesaj = f"<i>💭 {dusunce}</i>\n\n{cevap}" if dusunce else cevap
+        
+        # Leyla'nın cevabını gönder
+        await update.message.reply_text(formatli_mesaj, parse_mode="HTML")
+        
+        # Hafızayı güncelle
+        hafiza[user_id].append({"role": "user", "content": user_message})
+        hafiza[user_id].append({"role": "assistant", "content": cevap})
+        if len(hafiza[user_id]) > 40:
+            hafiza[user_id] = hafiza[user_id][-40:]
+
+        # --- FOTOĞRAF İSTEĞİ KONTROLÜ ---
+        if any(kelime in user_message.lower() for kelime in ["fotoğraf", "resim", "selfie", "foto"]):
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
             
+            # Profil fotoğrafındaki Leyla'ya benzeyen bir görsel üretmesi için detaylı prompt
+            gorsel_prompt = (
+                "42 year old Turkish woman, round face, warm smile, light brown eyes, "
+                "wearing a pastel pink hijab and light green tunic, slightly plump, "
+                "sitting in a cafe, drinking coffee, realistic photography, candid"
+            )
+            encoded_prompt = urllib.parse.quote(gorsel_prompt)
+            gorsel_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=512&nologo=true"
+            
+            try:
+                await update.message.reply_photo(
+                    photo=gorsel_url, 
+                    caption="İşte, bugün kafede çekildiğim bir kare... ☕"
+                )
+            except Exception as img_error:
+                logging.error(f"Görsel gönderme hatası: {img_error}")
+                await update.message.reply_text("Fotoğrafı çekmeye çalıştım ama ışık biraz kötüydü galiba, tekrar dener misin?")
+        # -----------------------------------------------------------------
+
     except Exception as e:
         logging.error(f"Pollinations hatası: {e}")
         await update.message.reply_text("Şu an biraz dalgınım, tekrar dener misin? 😅")
