@@ -124,7 +124,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Profil fotoğrafındaki Leyla'ya benzeyen bir görsel üretmesi için detaylı prompt
             gorsel_prompt = (
-                gorsel_prompt = (
                 "raw photo, photorealistic portrait of a 42 year old Turkish woman, mature face, natural skin texture with slight wrinkles, realistic eyes, wearing a modest pastel pink hijab, slightly overweight, motherly figure, sitting in a cafe, drinking coffee, shot on 35mm lens, f/1.8, natural lighting, candid, documentary style, 8k, ultra detailed, NOT anime, NOT cartoon, NOT plastic skin, NOT doll-like"
             )
             encoded_prompt = urllib.parse.quote(gorsel_prompt)
