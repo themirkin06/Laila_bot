@@ -13,8 +13,7 @@ logging.basicConfig(
 )
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-client = Pollinations()  # API anahtarı gerekmez, ücretsiz katman
-
+client = Pollinations(api_key=os.getenv("POLLINATIONS_API_KEY"))
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
