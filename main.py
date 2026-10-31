@@ -57,7 +57,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     except Exception as e:
         logging.error(f"Pollinations hatası: {e}")
-        await update.message.reply_text("Şu an biraz meşgulüm, tekrar dönücem sana 😅")
+        await update.message.reply_text("Şu an biraz dalgınım, tekrar dener misin? 😅")
 
 
 async def otomatik_mesaj(bot, chat_id):
