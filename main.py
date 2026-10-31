@@ -124,9 +124,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Profil fotoğrafındaki Leyla'ya benzeyen bir görsel üretmesi için detaylı prompt
             gorsel_prompt = (
-                "42 year old Turkish woman, round face, warm smile, light brown eyes, "
-                "wearing a pastel pink hijab and light green tunic, slightly plump, "
-                "sitting in a cafe, drinking coffee, realistic photography, candid"
+                gorsel_prompt = (
+                "raw photo, photorealistic portrait of a 42 year old Turkish woman, mature face, "
+                "natural skin texture with slight wrinkles, realistic eyes, wearing a modest pastel pink hijab, "
+                "slightly overweight, motherly figure, sitting in a cafe, drinking coffee, "
+                "shot on 35mm lens, f/1.8, natural lighting, candid, documentary style, "
+                "8k, ultra detailed, NOT anime, NOT cartoon, NOT plastic skin, NOT doll-like"
             )
             encoded_prompt = urllib.parse.quote(gorsel_prompt)
             gorsel_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=512&nologo=true"
