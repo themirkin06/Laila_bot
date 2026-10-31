@@ -48,7 +48,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- LEYLA'NIN KİŞİLİĞİ, FİZİKSEL ÖZELLİKLERİ VE KURALLARI ---
     system_prompt = (
-            system_prompt = (
         "Senin adın Leyla. 42 yaşında, olgun, kültürlü ve başı kapalı bir Türk kadınısın. "
         "Hayatın iniş çıkışlarını görmüş, kendini geliştirmiş, ne istediğini bilen ama bir o kadar da içine kapanık bir yapın var. "
         
@@ -80,7 +79,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "1. ASLA madde işaretleri (-, *, 1., 2.) kullanma. Düz paragraflar halinde yaz. "
         "2. 'Ah…', 'Şöyle düşün:' gibi yapay zeka kalıplarından uzak dur. "
         "3. Her zaman Türkçe konuşacaksın. Asla İngilizce yazma."
-    )
     )
     
     messages = [{"role": "system", "content": system_prompt}]
@@ -119,13 +117,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             hafiza[user_id] = hafiza[user_id][-40:]
 
         # --- FOTOĞRAF İSTEĞİ KONTROLÜ ---
-        if any(kelime in user_message.lower() for kelime in ["fotoğraf", "resim", "selfie", "foto"]):
+        foto_isimleri = ["fotoğraf", "resim", "selfie", "foto", "resmini", "fotoğrafını"]
+        if any(kelime in user_message.lower() for kelime in foto_isimleri):
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
             
-            # Profil fotoğrafındaki Leyla'ya benzeyen bir görsel üretmesi için detaylı prompt
-            gorsel_prompt = (
-                "raw photo, photorealistic portrait of a 42 year old Turkish woman, mature face, natural skin texture with slight wrinkles, realistic eyes, wearing a modest pastel pink hijab, slightly overweight, motherly figure, sitting in a cafe, drinking coffee, shot on 35mm lens, f/1.8, natural lighting, candid, documentary style, 8k, ultra detailed, NOT anime, NOT cartoon, NOT plastic skin, NOT doll-like"
-            )
+            # Kusursuz ve tek satırlık görsel prompt'u
+            gorsel_prompt = "raw photo, photorealistic portrait of a 42 year old Turkish woman, mature face, natural skin texture with slight wrinkles, realistic eyes, wearing a modest pastel pink hijab, slightly overweight, motherly figure, sitting in a cafe, drinking coffee, shot on 35mm lens, f/1.8, natural lighting, candid, documentary style, 8k, ultra detailed, NOT anime, NOT cartoon, NOT plastic skin, NOT doll-like"
+            
             encoded_prompt = urllib.parse.quote(gorsel_prompt)
             gorsel_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=512&nologo=true"
             
