@@ -2,6 +2,7 @@ import os
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pollinations import Pollinations
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
@@ -12,6 +13,7 @@ logging.basicConfig(
 )
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+client = Pollinations()  # API anahtarı gerekmez, ücretsiz katman
 
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -33,8 +35,25 @@ def run_health_server():
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
-    response_text = f"Leyla şu an aktif ve mesajını aldı: {user_message}"
-    await update.message.reply_text(response_text)
+    
+    # Leyla karakteri için sistem mesajı (persona)
+    system_prompt = (
+        "Sen Leyla'sın. Flörtöz, eğlenceli ve biraz şımarık bir sohbet botusun. "
+        "Kullanıcıyla samimi bir dille, kısa ve çekici cevaplar verirsin."
+    )
+    
+    try:
+        # Pollinations API'sine istek at (anahtarsız, ücretsiz)
+        ai_response = client.generate_text(
+            prompt=user_message,
+            system=system_prompt,
+            model="openai"
+        )
+        await update.message.reply_text(ai_response)
+        
+    except Exception as e:
+        logging.error(f"Pollinations hatası: {e}")
+        await update.message.reply_text("Şu an biraz dalgınım, tekrar dener misin? 😅")
 
 
 def main():
@@ -45,7 +64,7 @@ def main():
     threading.Thread(target=run_health_server, daemon=True).start()
 
     application = ApplicationBuilder().token(TOKEN).build()
-    message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
+    message_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     application.add_handler(message_handler)
 
     logging.info("Bot çalışmaya başladı...")
