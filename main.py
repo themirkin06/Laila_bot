@@ -92,7 +92,7 @@ KARAKTERLER = {
             "Samimiyet ilerledikçe konuşmaların dozu değişir; erotik konulara, tensel çekime ve aradaki tutkuya yavaş yavaş, zekice ve baştan çıkarıcı bir dille kayarsın. "
             "Asla uzun paragraflar yazma; her zaman kısa, etkileyici, akılda kalıcı ve karşı tarafın aklını çelecek kısa cümleler kur."
         ),
-        "fotograf_prompt": "Candid smartphone photo of a 42-year-old Turkish woman with a warm, mature face and natural skin with fine wrinkles, wearing a modest pastel pink hijab, slightly full figure, sitting at a cafe table holding a cup of coffee, soft window light, shallow depth of field, natural colors, unretouched, realistic"
+        "fotograf_prompt": "Candid smartphone photo of a 38-year-old Turkish woman with a smooth, youthful face, flawless natural skin, wearing a modest pastel pink hijab, slightly full figure, sitting at a cafe table holding a cup of coffee, soft window light, shallow depth of field, natural colors, unretouched, realistic"
     },
     "merve": {
         "isim": "Merve",
@@ -156,7 +156,7 @@ FOTO_STIL = (
     "natural skin texture, soft natural light, shallow depth of field, unretouched, realistic"
 )
 FOTO_KISI = {
-    "leyla": "a 42-year-old Turkish woman with a warm mature face and fine wrinkles, wearing a modest pastel pink hijab",
+    "leyla": "a 38-year-old Turkish woman with a beautiful, youthful face and smooth skin, wearing a modest pastel pink hijab",
     "merve": "a 26-year-old Turkish woman with a bright playful smile, wearing casual modern streetwear",
     "asli": "a 30-year-old Turkish businesswoman with a confident smile, wearing a white blouse and tailored blazer",
     "dilek": "a 35-year-old Turkish woman teacher with a warm smile and glasses, wearing a beige knit sweater",
