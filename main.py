@@ -70,7 +70,7 @@ ortak_kural = (
 # --- KARAKTERLER SÖZLÜĞÜ ---
 # "seed" her karakterin fotoğraflarının birbirine benzemesi için sabit tutulur.
 KARAKTERLER = {
-    ""leyla": {
+    "leyla": {
         "isim": "Leyla",
         "seed": 1101,
         "prompt": ortak_kural + (
