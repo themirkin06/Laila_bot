@@ -499,7 +499,7 @@ def cloudflare_gorsel_sync(prompt: str, seed: int) -> bytes:
     )
     req = urllib.request.Request(
         url,
-        data=json.dumps({"prompt": prompt, "steps": 6, "seed": seed}).encode("utf-8"),
+        data=json.dumps({"prompt": prompt, "steps": 6,}).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {CF_API_TOKEN}",
             "Content-Type": "application/json",
