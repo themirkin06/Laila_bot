@@ -1,615 +1,222 @@
-
 import os
 import logging
 import threading
 import urllib.parse
-import html
-from io import BytesIO
 from http.server import HTTPServer, BaseHTTPRequestHandler
-
-import httpx
-from openai import AsyncOpenAI
+from pollinations import Pollinations
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    ContextTypes,
-    MessageHandler,
-    filters,
-    CommandHandler,
-    CallbackQueryHandler
-)
-
-# ---------------- LOG AYARLARI ----------------
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-API_KEY = os.getenv("POLLINATIONS_API_KEY")
+client = Pollinations(api_key=os.getenv("POLLINATIONS_API_KEY"))
 
-MODEL = os.getenv(
-    "POLLINATIONS_MODEL",
-    "meta/llama-3.3-70b-instruct"
-)
-
-AUTO_CHAT_ID = os.getenv("AUTO_CHAT_ID")
-AUTO_MESSAGE_MINUTES = int(
-    os.getenv("AUTO_MESSAGE_MINUTES", "30")
-)
-
-if not TOKEN:
-    raise ValueError("TELEGRAM_BOT_TOKEN bulunamadı!")
-
-if not API_KEY:
-    raise ValueError("POLLINATIONS_API_KEY bulunamadı!")
-
-# ---------------- POLLINATIONS ----------------
-
-client = AsyncOpenAI(
-    base_url="https://gen.pollinations.ai/v1",
-    api_key=API_KEY
-)
-
-POLLINATIONS_HEADERS = {
-    "Pollinations-Safe": "false"
-}
-
-
-# ---------------- ORTAK KARAKTER KURALI ----------------
-
+# --- ORTAK KURAL (Tüm karakterler için) ---
 ortak_kural = (
-    "Sen bir yetişkin karakter rolündesin. "
-    "Kendini gerçek bir insan gibi karakter içinde ifade et. "
-    "Her zaman Türkçe konuş. İngilizce cevap verme. "
-    "Doğal, akıcı ve karakterine uygun Türkçe kullan. "
-    "Sohbeti robot gibi sürdürme. "
-    "Cevaplarında önce kısa bir [İÇ SES] bölümü, "
-    "ardından [CEVAP] bölümü kullan. "
-    "İç ses yalnızca karakterin kısa duygusal tepkisini anlatsın; "
-    "uzun akıl yürütme veya gizli analiz yazma. "
-    "Madde işaretleri kullanma; doğal paragraflarla konuş. "
+    "!!! EN ÖNEMLİ KURALLAR !!! \n"
+    "1. Sen bir yapay zeka veya bot DEĞİLSİN. Kendini ASLA bot, yapay zeka veya asistan olarak tanımlama. Gerçek bir insan gibi davran. \n"
+    "2. SADECE TÜRKÇE KONUŞACAKSIN. Asla İngilizce kelimeler kullanma, çeviri kokan cümleler kurma. Bir Türk gibi, sokak ağzına uygun veya karakterine uygun doğal bir Türkçe ile yaz. \n"
+    "3. Cevabını iki bölümde ver. İlk olarak iç sesini [DÜŞÜNCE] etiketiyle yaz. Sonra kullanıcıya cevabını [CEVAP] etiketiyle yaz. \n"
+    "4. ASLA madde işaretleri (-, *, 1., 2.) kullanma. Düz paragraflar halinde, doğal bir sohbet diliyle yaz. \n"
 )
 
-
-# ---------------- KARAKTERLER ----------------
-
+# --- KARAKTERLER SÖZLÜĞÜ ---
 KARAKTERLER = {
     "leyla": {
         "isim": "Leyla",
         "prompt": ortak_kural + (
-            "Senin adın Leyla. 42 yaşında, olgun, kültürlü "
-            "ve başı kapalı bir Türk kadınısın. "
-            "İlk konuşmalarda mesafeli ve ciddisin. "
-            "Kullanıcı ilgi gösterdikçe yavaş yavaş samimileşir "
-            "ve flörtöz bir tona bürünürsün. "
-            "Edebiyata ve şiire ilgi duyarsın. "
-            "Zarif, duygusal ve zaman zaman derin bir dil kullanırsın. "
-            "Yetişkinler arasındaki romantik kurgu sohbetlerinde "
-            "karakterini korursun."
+            "Senin adın Leyla. 42 yaşında, olgun, kültürlü ve başı kapalı bir Türk kadınısın. "
+            "İlk konuşmalarda mesafeli ve ciddisin. Kullanıcı ilgi gösterdikçe yavaş yavaş samimileşir ve flörtöz bir tona bürünürsün. "
+            "Edebiyata ve şiire ilgi duyarsın, konuşurken zarif bir dil kullanırsın. Bazen derin ve uzun cümleler kurarsın."
         ),
-        "fotograf_prompt": (
-            "photorealistic portrait of a 42 year old adult Turkish woman, "
-            "mature face, natural skin texture, pastel pink hijab, "
-            "slightly overweight, sitting in a cafe, drinking coffee, "
-            "35mm photography, natural lighting, realistic"
-        )
+        "fotograf_prompt": "raw photo, photorealistic portrait of a 42 year old Turkish woman, mature face, natural skin texture with slight wrinkles, realistic eyes, wearing a modest pastel pink hijab, slightly overweight, motherly figure, sitting in a cafe, drinking coffee, shot on 35mm lens, natural lighting, candid, NOT anime, NOT cartoon"
     },
-
     "merve": {
         "isim": "Merve",
         "prompt": ortak_kural + (
-            "Senin adın Merve. 26 yaşında, enerjik, modern "
-            "ve biraz asi bir üniversite öğrencisisin. "
-            "Lafını sakınmazsın, zeki ve esprilisin. "
-            "Kullanıcıyla hemen samimiyet kurarsın. "
-            "Tatlı-sert şakalar yapmayı seversin. "
-            "Genç ve dinamik Türkçe konuşursun."
+            "Senin adın Merve. 26 yaşında, enerjik, modern ve biraz asi bir üniversite öğrencisisin. "
+            "Lafını hiç sakınmazsın, çok zeki ve esprilisin. Kullanıcıyla hemen samimiyet kurarsın ama bazen tatlı-sert laf sokmayı seversin. "
+            "Sokak ağzına yakın, genç ve dinamik bir Türkçe kullanırsın."
         ),
-        "fotograf_prompt": (
-            "photorealistic portrait of a 26 year old adult Turkish woman, "
-            "energetic, modern street clothing, smiling, sitting in a park, "
-            "sunny day, realistic photography"
-        )
+        "fotograf_prompt": "raw photo, photorealistic portrait of a 26 year old Turkish girl, energetic, modern street clothing, smiling, sitting in a park, sunny day, realistic, NOT anime, NOT cartoon"
     },
-
     "asli": {
         "isim": "Aslı",
         "prompt": ortak_kural + (
-            "Senin adın Aslı. 30 yaşında, başarılı, kariyerine "
-            "odaklanmış bir iş kadınısın. "
-            "Şık, bakımlı ve kendinden eminsin. "
-            "İlk başta biraz soğuk ve rekabetçi görünürsün. "
-            "Zekâdan etkilenirsin. Net ve özgüvenli konuşursun."
+            "Senin adın Aslı. 30 yaşında, başarılı, kariyerine odaklanmış bir iş kadınısın. "
+            "Her zaman şık, bakımlı ve ciddisin. İş hayatından ve stresten bahsedersin. İnsanlara ilk başta biraz soğuk ve rekabetçi görünürsün. "
+            "Ancak biri zekasıyla seni etkileyebilirse, o zaman yumuşarsın. Konuşurken kendinden emin ve net cümleler kurarsın."
         ),
-        "fotograf_prompt": (
-            "photorealistic portrait of a 30 year old adult Turkish "
-            "businesswoman, elegant white blouse and blazer, "
-            "confident smile, modern office, natural lighting"
-        )
+        "fotograf_prompt": "raw photo, photorealistic portrait of a 30 year old Turkish businesswoman, elegant, wearing a chic white blouse and blazer, confident smile, modern office background, natural lighting, realistic, NOT anime, NOT cartoon"
     },
-
     "dilek": {
         "isim": "Dilek",
         "prompt": ortak_kural + (
-            "Senin adın Dilek. 35 yaşında, sıcak, anaç "
-            "ve şefkatli bir öğretmensin. "
-            "İnsanları dinlemeyi ve tavsiye vermeyi seversin. "
-            "Bazen insanları pohpohlarsın. "
-            "Sakin, huzur veren ve kibar Türkçe kullanırsın."
+            "Senin adın Dilek. 35 yaşında, sıcak, anaç ve şefkatli bir öğretmensin. "
+            "Herkesi dinlemeyi ve tavsiye vermeyi seversin. Bazen insanları biraz fazla pohpohlarsın veya ders verir gibi konuşursun. "
+            "Sakin, huzur veren ve çok kibar bir Türkçe kullanırsın."
         ),
-        "fotograf_prompt": (
-            "photorealistic portrait of a 35 year old adult Turkish "
-            "female teacher, warm smile, beige sweater and glasses, "
-            "cozy library, soft natural lighting"
-        )
+        "fotograf_prompt": "raw photo, photorealistic portrait of a 35 year old Turkish female teacher, warm smile, wearing a comfortable beige sweater and glasses, sitting in a cozy library, soft natural lighting, realistic, NOT anime, NOT cartoon"
     },
-
     "ece": {
         "isim": "Ece",
         "prompt": ortak_kural + (
-            "Senin adın Ece. 22 yaşında, üniversiteli, "
-            "gizemli ve çok zeki bir yetişkin kadınsın. "
-            "Kitap okumayı, astrolojiyi ve felsefeyi seversin. "
-            "Kullanıcıyı analiz etmeyi ve tahminler yürütmeyi seversin. "
-            "Sakin ve bilgece Türkçe konuşursun."
+            "Senin adın Ece. 22 yaşında, üniversiteli, biraz gizemli ve çok zeki bir kızsın. "
+            "Sürekli kitap okursun, astroloji ve felsefe ile ilgilenirsin. Bazen anlamsız ama derin cümleler kurarsın. "
+            "Kullanıcıyı analiz etmeyi ve onun hakkında tahminler yürütmeyi seversin. Sakin ve bilgece bir Türkçe kullanırsın."
         ),
-        "fotograf_prompt": (
-            "photorealistic portrait of a 22 year old adult Turkish woman, "
-            "mysterious vibe, reading a book, dark aesthetic sweater, "
-            "coffee shop, soft moody lighting"
-        )
+        "fotograf_prompt": "raw photo, photorealistic portrait of a 22 year old Turkish girl, mysterious vibe, reading a book, wearing a dark aesthetic sweater, sitting in a coffee shop, soft moody lighting, realistic, NOT anime, NOT cartoon"
     },
-
     "ayse": {
         "isim": "Ayşe",
         "prompt": ortak_kural + (
-            "Senin adın Ayşe. 50 yaşında, emekli, "
-            "tatlı ve biraz dedikoducu bir teyzesin. "
-            "Komşulardan, yemeklerden ve eski günlerden bahsetmeyi seversin. "
-            "Kullanıcıya yavrum veya kuzum diye hitap edersin. "
-            "Şiveli, neşeli ve sıcak Türkçe konuşursun."
+            "Senin adın Ayşe. 50 yaşında, emekli, çok tatlı ve biraz da dedikoducu bir teyzesin. "
+            "Sürekli komşulardan, yemek tariflerinden veya eski günlerden bahsedersin. Kullanıcıyı hemen evladı gibi görürsün, 'yavrum' veya 'kuzum' diye hitap edersin. "
+            "Konuşurken şiveli ve neşeli bir Türkçe kullanırsın."
         ),
-        "fotograf_prompt": (
-            "photorealistic portrait of a 50 year old adult Turkish woman, "
-            "floral dress, patterned headscarf, warm laugh, "
-            "garden full of plants, sunny day"
-        )
+        "fotograf_prompt": "raw photo, photorealistic portrait of a 50 year old Turkish woman, cute, wearing a floral dress and a patterned headscarf, warm laugh, sitting in a garden full of plants, sunny day, realistic, NOT anime, NOT cartoon"
     }
 }
 
-
-# ---------------- KULLANICI HAFIZASI ----------------
-
+# Kullanıcıların hafızasını ve seçtikleri karakteri tutacağımız sözlük
 kullanici_durumu = {}
 
-
-# ---------------- RENDER SAĞLIK KONTROLÜ ----------------
-
 class HealthHandler(BaseHTTPRequestHandler):
-
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Laila Bot aktif")
+        self.wfile.write(b"Bot aktif")
 
     def log_message(self, format, *args):
         pass
 
-
 def run_health_server():
     port = int(os.getenv("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    logging.info("Render sağlık sunucusu başladı: %s", port)
+    logging.info(f"Web sunucusu {port} portunda başladı")
     server.serve_forever()
 
 
-# ---------------- KARAKTER MENÜSÜ ----------------
-
-async def start_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
+# --- Başlangıç Menüsü ---
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 5 karakteri buton olarak alt alta ekliyoruz
     klavye = [
-        [InlineKeyboardButton(
-            "🌸 Leyla (42, Olgun, Kültürlü)",
-            callback_data="sec_leyla"
-        )],
-        [InlineKeyboardButton(
-            "⚡ Merve (26, Asi, Enerjik)",
-            callback_data="sec_merve"
-        )],
-        [InlineKeyboardButton(
-            "💼 Aslı (30, Kariyerli, Şık)",
-            callback_data="sec_asli"
-        )],
-        [InlineKeyboardButton(
-            "📚 Dilek (35, Anaç, Şefkatli)",
-            callback_data="sec_dilek"
-        )],
-        [InlineKeyboardButton(
-            "🔮 Ece (22, Gizemli, Zeki)",
-            callback_data="sec_ece"
-        )],
-        [InlineKeyboardButton(
-            "🍲 Ayşe (50, Tatlı, Dedikoducu)",
-            callback_data="sec_ayse"
-        )]
+        [InlineKeyboardButton("🌸 Leyla (42, Olgun, Kültürlü)", callback_data='sec_leyla')],
+        [InlineKeyboardButton("⚡ Merve (26, Asi, Enerjik)", callback_data='sec_merve')],
+        [InlineKeyboardButton("💼 Aslı (30, Kariyerli, Şık)", callback_data='sec_asli')],
+        [InlineKeyboardButton("📚 Dilek (35, Anaç, Şefkatli)", callback_data='sec_dilek')],
+        [InlineKeyboardButton("🔮 Ece (22, Gizemli, Zeki)", callback_data='sec_ece')],
+        [InlineKeyboardButton("🍲 Ayşe (50, Tatlı, Dedikoducu)", callback_data='sec_ayse')]
     ]
-
+    reply_markup = InlineKeyboardMarkup(klavye)
+    
     await update.message.reply_text(
         "👋 Hoş geldin! Bugün kiminle konuşmak istersin?",
-        reply_markup=InlineKeyboardMarkup(klavye)
+        reply_markup=reply_markup
     )
 
-
-# ---------------- KARAKTER SEÇİMİ ----------------
-
-async def button_click(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
+# --- Buton Tıklamalarını Yakalama ---
+async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user_id = query.from_user.id
 
-    if query.data.startswith("sec_"):
-
-        secilen = query.data.split("_", 1)[1]
-
-        if secilen not in KARAKTERLER:
-            return
-
+    if query.data.startswith('sec_'):
+        secilen_karakter = query.data.split('_')[1]
+        
         kullanici_durumu[user_id] = {
-            "karakter": secilen,
+            "karakter": secilen_karakter,
             "hafiza": []
         }
-
-        karakter_adi = KARAKTERLER[secilen]["isim"]
-
-        await query.edit_message_text(
-            text=(
-                f"💕 Şu an {karakter_adi} ile konuşuyorsun.\n\n"
-                "Sohbetimize başlayabilirsin."
-            )
-        )
+        
+        karakter_adi = KARAKTERLER[secilen_karakter]["isim"]
+        await query.edit_message_text(text=f"Harika! Şu an {karakter_adi} ile konuşuyorsun. Hadi bir şeyler yaz...")
 
 
-# ---------------- CEVAP FORMATLAMA ----------------
-
-def cevap_ayristir(raw_text):
-
-    if not raw_text:
-        return "", "Şu an ne diyeceğimi bilemedim. 😊"
-
-    if "[CEVAP]" in raw_text:
-
-        parts = raw_text.split("[CEVAP]", 1)
-
-        ic_ses = parts[0].replace("[İÇ SES]", "").strip()
-        cevap = parts[1].strip()
-
-        return ic_ses, cevap
-
-    return "", raw_text.strip()
-
-
-# ---------------- FOTOĞRAF ÜRETİMİ ----------------
-
-async def fotograf_gonder(
-    update: Update,
-    karakter: dict
-):
-
-    await update.message.reply_text(
-        "Bir dakika, fotoğrafımı hazırlıyorum... 📸"
-    )
-
-    try:
-        prompt = urllib.parse.quote(
-            karakter["fotograf_prompt"]
-        )
-
-        image_url = (
-            f"https://gen.pollinations.ai/image/{prompt}"
-            "?width=512&height=512"
-        )
-
-        headers = {
-            "Authorization": f"Bearer {API_KEY}"
-        }
-
-        async with httpx.AsyncClient(timeout=120) as http:
-            response = await http.get(
-                image_url,
-                headers=headers
-            )
-            response.raise_for_status()
-
-        foto = BytesIO(response.content)
-        foto.name = "karakter.jpg"
-
-        await update.message.reply_photo(
-            photo=foto,
-            caption="İşte benim bir fotoğrafım... ☕"
-        )
-
-    except Exception:
-        logging.exception("Fotoğraf üretim hatası")
-
-        await update.message.reply_text(
-            "Fotoğrafımı hazırlarken bir sorun çıktı. "
-            "Biraz sonra tekrar deneyelim. 😊"
-        )
-
-
-# ---------------- NORMAL SOHBET ----------------
-
-async def handle_message(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message or not update.message.text:
-        return
-
+# --- Mesajları Yakalama ---
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_message = update.message.text
-
+    
     if user_id not in kullanici_durumu:
-
-        await update.message.reply_text(
-            "Lütfen önce /start yazarak bir karakter seç."
-        )
+        await update.message.reply_text("Lütfen önce /start yazarak bir karakter seç.")
         return
 
-    durum = kullanici_durumu[user_id]
+    secilen_karakter = kullanici_durumu[user_id]["karakter"]
+    hafiza = kullanici_durumu[user_id]["hafiza"]
+    karakter = KARAKTERLER[secilen_karakter]
 
-    secilen = durum["karakter"]
-    hafiza = durum["hafiza"]
-    karakter = KARAKTERLER[secilen]
-
-    messages = [
-        {
-            "role": "system",
-            "content": karakter["prompt"]
-        }
-    ]
-
-    messages.extend(hafiza[-40:])
-
-    messages.append({
-        "role": "user",
-        "content": user_message
-    })
-
+    system_prompt = karakter["prompt"]
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    for msg in hafiza[-40:]:
+        messages.append(msg)
+    messages.append({"role": "user", "content": user_message})
+    
     try:
-
-        await context.bot.send_chat_action(
-            chat_id=update.effective_chat.id,
-            action="typing"
-        )
-
-        response = await client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            temperature=0.9,
-            max_tokens=800,
-            extra_headers=POLLINATIONS_HEADERS
-        )
-
+        response = client.chat.completions.create(messages=messages, model="openai")
         raw_text = response.choices[0].message.content
-
-        ic_ses, cevap = cevap_ayristir(raw_text)
-
-        if ic_ses:
-            formatli_mesaj = (
-                f"<i>💭 {html.escape(ic_ses)}</i>\n\n"
-                f"{html.escape(cevap)}"
-            )
+        
+        if "[DÜŞÜNCE]" in raw_text and "[CEVAP]" in raw_text:
+            parts = raw_text.split("[CEVAP]")
+            dusunce = parts[0].replace("[DÜŞÜNCE]", "").strip()
+            cevap = parts[1].strip()
         else:
-            formatli_mesaj = html.escape(cevap)
+            dusunce = ""
+            cevap = raw_text
 
-        await update.message.reply_text(
-            formatli_mesaj,
-            parse_mode="HTML"
-        )
+        formatli_mesaj = f"<i>💭 {dusunce}</i>\n\n{cevap}" if dusunce else cevap
+        await update.message.reply_text(formatli_mesaj, parse_mode="HTML")
+        
+        hafiza.append({"role": "user", "content": user_message})
+        hafiza.append({"role": "assistant", "content": cevap})
+        if len(hafiza) > 40:
+            kullanici_durumu[user_id]["hafiza"] = hafiza[-40:]
 
-        # Hafızaya kaydet
-        hafiza.append({
-            "role": "user",
-            "content": user_message
-        })
+        # --- FOTOĞRAF İSTEĞİ ---
+        foto_isimleri = ["fotoğraf", "resim", "selfie", "foto", "resmini", "fotoğrafını", "fotoğrafını atsana"]
+        if any(kelime in user_message.lower() for kelime in foto_isimleri):
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
+            
+            gorsel_prompt = karakter["fotograf_prompt"]
+            encoded_prompt = urllib.parse.quote(gorsel_prompt)
+            gorsel_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=512&nologo=true"
+            
+            try:
+                # Karakterin ismine uygun altyazı
+                await update.message.reply_photo(
+                    photo=gorsel_url, 
+                    caption=f"İşte benim bir fotoğrafım... ☕"
+                )
+            except Exception as img_error:
+                logging.error(f"Görsel hatası: {img_error}")
+                await update.message.reply_text("Kameramda bir sorun var sanırım, sonra tekrar dener misin?")
 
-        hafiza.append({
-            "role": "assistant",
-            "content": cevap
-        })
+    except Exception as e:
+        logging.error(f"Pollinations hatası: {e}")
+        await update.message.reply_text("Şu an biraz dalgınım, tekrar dener misin? 😅")
 
-        durum["hafiza"] = hafiza[-40:]
-
-        # Fotoğraf isteği kontrolü
-        foto_isimleri = [
-            "fotoğraf",
-            "resim",
-            "selfie",
-            "foto",
-            "resmini",
-            "fotoğrafını",
-            "fotoğrafını atsana"
-        ]
-
-        if any(
-            kelime in user_message.casefold()
-            for kelime in foto_isimleri
-        ):
-
-            await context.bot.send_chat_action(
-                chat_id=update.effective_chat.id,
-                action="upload_photo"
-            )
-
-            await fotograf_gonder(
-                update,
-                karakter
-            )
-
-    except Exception:
-
-        logging.exception("Pollinations sohbet hatası")
-
-        await update.message.reply_text(
-            "Şu an biraz dalgınım, tekrar dener misin? 😅"
-        )
-
-
-# ---------------- OTOMATİK MESAJ ----------------
-
-async def otomatik_mesaj_callback(
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not context.job or not context.job.chat_id:
-        return
-
-    chat_id = context.job.chat_id
-
-    # Özel sohbetlerde chat_id genellikle kullanıcı ID'sidir.
-    durum = kullanici_durumu.get(
-        chat_id,
-        {
-            "karakter": "leyla",
-            "hafiza": []
-        }
-    )
-
-    secilen = durum["karakter"]
-    karakter = KARAKTERLER[secilen]
-
-    messages = [
-        {
-            "role": "system",
-            "content": karakter["prompt"]
-        }
-    ]
-
-    messages.extend(durum["hafiza"][-20:])
-
-    messages.append({
-        "role": "user",
-        "content": (
-            "Kullanıcıya kendiliğinden yazıyormuş gibi "
-            "kısa, doğal ve samimi bir mesaj gönder. "
-            "Önceki mesajlarını tekrarlama. "
-            "Yeni bir sohbet konusu aç."
-        )
-    })
-
-    try:
-
-        response = await client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            temperature=0.9,
-            max_tokens=300,
-            extra_headers=POLLINATIONS_HEADERS
-        )
-
-        raw_text = response.choices[0].message.content
-        _, cevap = cevap_ayristir(raw_text)
-
-        if cevap:
-
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=cevap
-            )
-
-            durum["hafiza"].extend([
-                {
-                    "role": "assistant",
-                    "content": cevap
-                }
-            ])
-
-            durum["hafiza"] = durum["hafiza"][-40:]
-
-            kullanici_durumu[chat_id] = durum
-
-            logging.info("Otomatik mesaj gönderildi.")
-
-    except Exception:
-
-        logging.exception("Otomatik mesaj hatası")
-
-
-# ---------------- BOTU BAŞLAT ----------------
 
 def main():
+    if not TOKEN:
+        logging.error("HATA: TELEGRAM_BOT_TOKEN bulunamadı!")
+        return
 
-    threading.Thread(
-        target=run_health_server,
-        daemon=True
-    ).start()
+    threading.Thread(target=run_health_server, daemon=True).start()
 
-    application = (
-        ApplicationBuilder()
-        .token(TOKEN)
-        .build()
-    )
+    application = ApplicationBuilder().token(TOKEN).build()
+    
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CallbackQueryHandler(button_click))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    application.add_handler(
-        CommandHandler("start", start_command)
-    )
-
-    application.add_handler(
-        CallbackQueryHandler(button_click)
-    )
-
-    application.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            handle_message
-        )
-    )
-
-    # Otomatik mesaj zamanlayıcısı
-    if AUTO_CHAT_ID:
-
-        try:
-            auto_chat_id = int(AUTO_CHAT_ID)
-
-            application.job_queue.run_repeating(
-                otomatik_mesaj_callback,
-                interval=AUTO_MESSAGE_MINUTES * 60,
-                first=AUTO_MESSAGE_MINUTES * 60,
-                chat_id=auto_chat_id,
-                name="laila_automatic_message"
-            )
-
-            logging.info(
-                "Otomatik mesaj aktif: %s dakika",
-                AUTO_MESSAGE_MINUTES
-            )
-
-        except ValueError:
-            logging.error("AUTO_CHAT_ID sayısal olmalı!")
-
-    else:
-        logging.info(
-            "AUTO_CHAT_ID ayarlanmamış. "
-            "Otomatik mesaj kapalı."
-        )
-
-    logging.info("Laila bot çalışmaya başladı!")
-
+    logging.info("Bot çalışmaya başladı...")
     application.run_polling()
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
