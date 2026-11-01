@@ -641,7 +641,7 @@ def gorsel_indir(url: str) -> bytes:
 
 
 async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = "", puan: float = 0):
-    """Karakterin hayatını, yakınlık seviyesini ve emoji stilini ekleyerek modele sorar, (düşünce, cevap) döner."""
+    """Önce AI Horde'u dener; başarısız veya yavaşsa Pollinations'a düşer."""
     sistem = (
         KARAKTERLER[karakter_key]["prompt"]
         + "\n\n" + hayat_ozeti(karakter_key)
@@ -657,19 +657,114 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     messages.extend(hafiza[-HAFIZA_LIMITI:])
     messages.append({"role": "user", "content": kullanici_icerik})
 
-    # Senkron API çağrısını ayrı thread'de çalıştır, bot donmasın
-    parametreler = {"messages": messages, "model": LLM_MODEL}
-    if LLM_SICAKLIK is not None:
-        parametreler["temperature"] = LLM_SICAKLIK
+    def ai_horde_sync():
+        """AI Horde'un asenkron metin API'sini senkron çağırır (ayrı thread'de çalıştırılır)."""
+        api_key = os.getenv("AI_HORDE_API_KEY", "0000000000").strip() or "0000000000"
+        base_url = "https://aihorde.net/api/v2"
+        headers = {
+            "apikey": api_key,
+            "Client-Agent": "LailaTelegramBot:1.0",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        # Sohbet geçmişini AI Horde'un metin üretim API'sinin beklediği prompt biçimine çevir.
+        prompt_parts = []
+        for item in messages:
+            role = item.get("role", "user")
+            content = str(item.get("content", ""))
+            if role == "system":
+                prompt_parts.append(f"Talimatlar:\n{content}")
+            elif role == "assistant":
+                prompt_parts.append(f"Asistan: {content}")
+            else:
+                prompt_parts.append(f"Kullanıcı: {content}")
+        prompt = "\n\n".join(prompt_parts) + "\n\nAsistan:"
+
+        params = {
+            "max_length": int(os.getenv("AI_HORDE_MAX_TOKENS", "300")),
+            "max_context_length": int(os.getenv("AI_HORDE_CONTEXT", "4096")),
+            "temperature": LLM_SICAKLIK if LLM_SICAKLIK is not None else 0.7,
+            "top_p": 0.9,
+            "rep_pen": 1.05,
+        }
+        payload = {
+            "prompt": prompt,
+            "params": params,
+            "nsfw": True,
+            "trusted_workers": False,
+            "dry_run": False,
+        }
+        # İsteğe bağlı model filtresi: Render'da AI_HORDE_MODELS virgülle ayrılmış girilebilir.
+        model_names = [x.strip() for x in os.getenv("AI_HORDE_MODELS", "").split(",") if x.strip()]
+        if model_names:
+            payload["models"] = model_names
+
+        def request_json(url, data=None, method=None):
+            body = json.dumps(data, ensure_ascii=False).encode("utf-8") if data is not None else None
+            req = urllib.request.Request(url, data=body, headers=headers, method=method)
+            with urllib.request.urlopen(req, timeout=10) as response:
+                raw = response.read().decode("utf-8", errors="replace")
+                return json.loads(raw) if raw else {}
+
+        submitted = request_json(f"{base_url}/generate/text/async", payload, "POST")
+        request_id = submitted.get("id")
+        if not request_id:
+            raise RuntimeError(f"AI Horde istek kimliği döndürmedi: {submitted}")
+        if submitted.get("is_possible") is False:
+            raise RuntimeError(f"AI Horde isteği karşılayamıyor: {submitted.get('message', 'uygun işçi yok')}")
+
+        max_wait = max(5, min(45, int(os.getenv("AI_HORDE_MAX_WAIT", "20"))))
+        deadline = time.monotonic() + max_wait
+        while time.monotonic() < deadline:
+            time.sleep(2)
+            status = request_json(f"{base_url}/generate/text/status/{request_id}")
+            if status.get("faulted"):
+                raise RuntimeError(f"AI Horde üretimi başarısız: {status}")
+            if status.get("done"):
+                generations = status.get("generations") or []
+                if generations:
+                    generated_text = (generations[0].get("text") or "").strip()
+                    if generated_text:
+                        return generated_text
+                raise RuntimeError("AI Horde tamamlandı ancak metin döndürmedi.")
+
+        # Zaman aşımında bekleyen işi iptal etmeyi dene; başarısız olması yedek servisi etkilemez.
+        try:
+            request_json(f"{base_url}/generate/text/status/{request_id}", method="DELETE")
+        except Exception:
+            pass
+        raise TimeoutError(f"AI Horde {max_wait} saniyede cevap vermedi; Pollinations'a geçiliyor.")
+
+    # 1) Önce AI Horde. Kuyruk, bağlantı veya model hatasında Pollinations'a geç.
     try:
-        response = await asyncio.to_thread(client.chat.completions.create, **parametreler)
-    except Exception as e:
-        if "temperature" not in parametreler:
-            raise
-        logging.warning(f"Sıcaklık parametresiyle başarısız ({e}), onsuz deneniyor.")
-        parametreler.pop("temperature")
-        response = await asyncio.to_thread(client.chat.completions.create, **parametreler)
-    dusunce, cevap = cevabi_ayristir(response.choices[0].message.content)
+        raw_text = await asyncio.to_thread(ai_horde_sync)
+        dusunce, cevap = cevabi_ayristir(raw_text)
+        if not cevap.strip():
+            raise RuntimeError("AI Horde boş cevap döndürdü.")
+        logging.info("LLM yanıtı AI Horde üzerinden alındı.")
+    except Exception as horde_error:
+        logging.warning(f"AI Horde kullanılamadı, Pollinations deneniyor: {horde_error}")
+
+        # 2) Yedek: mevcut Pollinations çağrısı ve sıcaklık parametresi uyumluluk denemesi.
+        parametreler = {"messages": messages, "model": LLM_MODEL}
+        if LLM_SICAKLIK is not None:
+            parametreler["temperature"] = LLM_SICAKLIK
+        try:
+            response = await asyncio.to_thread(client.chat.completions.create, **parametreler)
+        except Exception as poll_error:
+            if "temperature" not in parametreler:
+                raise
+            logging.warning(f"Pollinations sıcaklık parametresiyle başarısız ({poll_error}), onsuz deneniyor.")
+            parametreler.pop("temperature")
+            response = await asyncio.to_thread(client.chat.completions.create, **parametreler)
+
+        raw_text = response.choices[0].message.content
+        dusunce, cevap = cevabi_ayristir(raw_text)
+        if not cevap.strip():
+            raise RuntimeError("Pollinations da boş cevap döndürdü.")
+        logging.info("LLM yanıtı yedek olarak Pollinations üzerinden alındı.")
+
     if TURKCE_DUZELT:
         cevap = await turkce_duzelt(cevap)
     return dusunce, cevap
