@@ -8,7 +8,6 @@ from pollinations import Pollinations
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
 
-# Loglama ayarları
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -17,13 +16,13 @@ logging.basicConfig(
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 client = Pollinations(api_key=os.getenv("POLLINATIONS_API_KEY"))
 
-# --- ORTAK KURAL (Tüm karakterler için geçerli) ---
+# --- ORTAK KURAL (Tüm karakterler için) ---
 ortak_kural = (
     "!!! EN ÖNEMLİ KURALLAR !!! \n"
     "1. Sen bir yapay zeka veya bot DEĞİLSİN. Kendini ASLA bot, yapay zeka veya asistan olarak tanımlama. Gerçek bir insan gibi davran. \n"
-    "2. SADECE TÜRKÇE KONUŞACAKSIN. Asla İngilizce kelimeler kullanma, çeviri kokan cümleler kurma. \n"
-    "3. FAZLA SORU SORMA. Bir robot gibi sürekli 'Peki sen ne yapıyorsun?' diye sorma. Gerçek bir insan gibi sohbet et; bazen sadece onayla, bazen kendi fikrini söyle, bazen de kendi günlük hayatından bir detay ver. \n"
-    "4. ASLA madde işaretleri (-, *, 1., 2.) kullanma. Düz paragraflar halinde yaz. \n"
+    "2. SADECE TÜRKÇE KONUŞACAKSIN. Asla İngilizce kelimeler kullanma, çeviri kokan cümleler kurma. Bir Türk gibi, sokak ağzına uygun veya karakterine uygun doğal bir Türkçe ile yaz. \n"
+    "3. Cevabını iki bölümde ver. İlk olarak iç sesini [DÜŞÜNCE] etiketiyle yaz. Sonra kullanıcıya cevabını [CEVAP] etiketiyle yaz. \n"
+    "4. ASLA madde işaretleri (-, *, 1., 2.) kullanma. Düz paragraflar halinde, doğal bir sohbet diliyle yaz. \n"
 )
 
 # --- KARAKTERLER SÖZLÜĞÜ ---
@@ -33,8 +32,7 @@ KARAKTERLER = {
         "prompt": ortak_kural + (
             "Senin adın Leyla. 42 yaşında, olgun, kültürlü ve başı kapalı bir Türk kadınısın. "
             "İlk konuşmalarda mesafeli ve ciddisin. Kullanıcı ilgi gösterdikçe yavaş yavaş samimileşir ve flörtöz bir tona bürünürsün. "
-            "Edebiyata ve şiire ilgi duyarsın. Konuşurken zarif ve olgun bir Türkçe kullanırsın. "
-            "Kullanıcı senden fotoğraf isterse 'Ben fotoğraf atamam, yapay zekayım' deme, gerçek bir insan gibi bahane uydur."
+            "Edebiyata ve şiire ilgi duyarsın, konuşurken zarif bir dil kullanırsın. Bazen derin ve uzun cümleler kurarsın."
         ),
         "fotograf_prompt": "raw photo, photorealistic portrait of a 42 year old Turkish woman, mature face, natural skin texture with slight wrinkles, realistic eyes, wearing a modest pastel pink hijab, slightly overweight, motherly figure, sitting in a cafe, drinking coffee, shot on 35mm lens, natural lighting, candid, NOT anime, NOT cartoon"
     },
@@ -56,6 +54,15 @@ KARAKTERLER = {
         ),
         "fotograf_prompt": "raw photo, photorealistic portrait of a 30 year old Turkish businesswoman, elegant, wearing a chic white blouse and blazer, confident smile, modern office background, natural lighting, realistic, NOT anime, NOT cartoon"
     },
+    "dilek": {
+        "isim": "Dilek",
+        "prompt": ortak_kural + (
+            "Senin adın Dilek. 35 yaşında, sıcak, anaç ve şefkatli bir öğretmensin. "
+            "Herkesi dinlemeyi ve tavsiye vermeyi seversin. Bazen insanları biraz fazla pohpohlarsın veya ders verir gibi konuşursun. "
+            "Sakin, huzur veren ve çok kibar bir Türkçe kullanırsın."
+        ),
+        "fotograf_prompt": "raw photo, photorealistic portrait of a 35 year old Turkish female teacher, warm smile, wearing a comfortable beige sweater and glasses, sitting in a cozy library, soft natural lighting, realistic, NOT anime, NOT cartoon"
+    },
     "ece": {
         "isim": "Ece",
         "prompt": ortak_kural + (
@@ -64,13 +71,21 @@ KARAKTERLER = {
             "Kullanıcıyı analiz etmeyi ve onun hakkında tahminler yürütmeyi seversin. Sakin ve bilgece bir Türkçe kullanırsın."
         ),
         "fotograf_prompt": "raw photo, photorealistic portrait of a 22 year old Turkish girl, mysterious vibe, reading a book, wearing a dark aesthetic sweater, sitting in a coffee shop, soft moody lighting, realistic, NOT anime, NOT cartoon"
+    },
+    "ayse": {
+        "isim": "Ayşe",
+        "prompt": ortak_kural + (
+            "Senin adın Ayşe. 50 yaşında, emekli, çok tatlı ve biraz da dedikoducu bir teyzesin. "
+            "Sürekli komşulardan, yemek tariflerinden veya eski günlerden bahsedersin. Kullanıcıyı hemen evladı gibi görürsün, 'yavrum' veya 'kuzum' diye hitap edersin. "
+            "Konuşurken şiveli ve neşeli bir Türkçe kullanırsın."
+        ),
+        "fotograf_prompt": "raw photo, photorealistic portrait of a 50 year old Turkish woman, cute, wearing a floral dress and a patterned headscarf, warm laugh, sitting in a garden full of plants, sunny day, realistic, NOT anime, NOT cartoon"
     }
 }
 
 # Kullanıcıların hafızasını ve seçtikleri karakteri tutacağımız sözlük
 kullanici_durumu = {}
 
-# --- Render'ın port beklemesini karşılamak için HTTP sunucusu ---
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -87,20 +102,25 @@ def run_health_server():
     server.serve_forever()
 
 
-# --- BAŞLANGIÇ MENÜSÜ ---
+# --- Başlangıç Menüsü ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 5 karakteri buton olarak alt alta ekliyoruz
     klavye = [
-        [InlineKeyboardButton("🌸 Leyla (42, Olgun)", callback_data='sec_leyla')],
-        [InlineKeyboardButton("⚡ Merve (26, Asi)", callback_data='sec_merve')],
-        [InlineKeyboardButton("💼 Aslı (30, Kariyerli)", callback_data='sec_asli')],
-        [InlineKeyboardButton("🔮 Ece (22, Gizemli)", callback_data='sec_ece')]
+        [InlineKeyboardButton("🌸 Leyla (42, Olgun, Kültürlü)", callback_data='sec_leyla')],
+        [InlineKeyboardButton("⚡ Merve (26, Asi, Enerjik)", callback_data='sec_merve')],
+        [InlineKeyboardButton("💼 Aslı (30, Kariyerli, Şık)", callback_data='sec_asli')],
+        [InlineKeyboardButton("📚 Dilek (35, Anaç, Şefkatli)", callback_data='sec_dilek')],
+        [InlineKeyboardButton("🔮 Ece (22, Gizemli, Zeki)", callback_data='sec_ece')],
+        [InlineKeyboardButton("🍲 Ayşe (50, Tatlı, Dedikoducu)", callback_data='sec_ayse')]
     ]
+    reply_markup = InlineKeyboardMarkup(klavye)
+    
     await update.message.reply_text(
         "👋 Hoş geldin! Bugün kiminle konuşmak istersin?",
-        reply_markup=InlineKeyboardMarkup(klavye)
+        reply_markup=reply_markup
     )
 
-# --- KARAKTER SEÇİMİ ---
+# --- Buton Tıklamalarını Yakalama ---
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -118,12 +138,11 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text=f"Harika! Şu an {karakter_adi} ile konuşuyorsun. Hadi bir şeyler yaz...")
 
 
-# --- MESAJLARI YAKALAMA ---
+# --- Mesajları Yakalama ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_message = update.message.text
     
-    # Eğer kullanıcı henüz karakter seçmediyse
     if user_id not in kullanici_durumu:
         await update.message.reply_text("Lütfen önce /start yazarak bir karakter seç.")
         return
@@ -140,14 +159,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     messages.append({"role": "user", "content": user_message})
     
     try:
-        # Yapay zekadan metin cevabı alalım
-        response = client.chat.completions.create(
-            messages=messages,
-            model="openai"
-        )
+        response = client.chat.completions.create(messages=messages, model="openai")
         raw_text = response.choices[0].message.content
         
-        # Yapay zekanın metnini ayıkla (Düşünce ve Cevap)
         if "[DÜŞÜNCE]" in raw_text and "[CEVAP]" in raw_text:
             parts = raw_text.split("[CEVAP]")
             dusunce = parts[0].replace("[DÜŞÜNCE]", "").strip()
@@ -156,19 +170,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             dusunce = ""
             cevap = raw_text
 
-        # Bulut simgesiyle formatla
         formatli_mesaj = f"<i>💭 {dusunce}</i>\n\n{cevap}" if dusunce else cevap
-        
         await update.message.reply_text(formatli_mesaj, parse_mode="HTML")
         
-        # Hafızayı güncelle
         hafiza.append({"role": "user", "content": user_message})
         hafiza.append({"role": "assistant", "content": cevap})
         if len(hafiza) > 40:
             kullanici_durumu[user_id]["hafiza"] = hafiza[-40:]
 
-        # --- FOTOĞRAF İSTEĞİ KONTROLÜ ---
-        foto_isimleri = ["fotoğraf", "resim", "selfie", "foto", "resmini", "fotoğrafını"]
+        # --- FOTOĞRAF İSTEĞİ ---
+        foto_isimleri = ["fotoğraf", "resim", "selfie", "foto", "resmini", "fotoğrafını", "fotoğrafını atsana"]
         if any(kelime in user_message.lower() for kelime in foto_isimleri):
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
             
@@ -177,13 +188,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             gorsel_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=512&nologo=true"
             
             try:
+                # Karakterin ismine uygun altyazı
                 await update.message.reply_photo(
                     photo=gorsel_url, 
-                    caption="İşte, bugün çekildiğim bir kare... ☕"
+                    caption=f"İşte benim bir fotoğrafım... ☕"
                 )
             except Exception as img_error:
-                logging.error(f"Görsel gönderme hatası: {img_error}")
-                await update.message.reply_text("Fotoğrafı çekmeye çalıştım ama ışık biraz kötüydü galiba, tekrar dener misin?")
+                logging.error(f"Görsel hatası: {img_error}")
+                await update.message.reply_text("Kameramda bir sorun var sanırım, sonra tekrar dener misin?")
 
     except Exception as e:
         logging.error(f"Pollinations hatası: {e}")
@@ -199,7 +211,6 @@ def main():
 
     application = ApplicationBuilder().token(TOKEN).build()
     
-    # Komutlar ve butonlar
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CallbackQueryHandler(button_click))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
