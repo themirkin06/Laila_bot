@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import base64
 import html
 import time
 import random
@@ -33,15 +34,24 @@ TZ = timezone(timedelta(hours=3))  # Türkiye saati
 
 # Kendiliğinden mesaj atma ayarları
 PROAKTIF_ACIK = os.getenv("PROAKTIF_ACIK", "1") != "0"
-PROAKTIF_SAAT_ARALIGI = (9, 23)   # sadece bu saatler arasında yazar (Türkiye saati)
+PROAKTIF_SAAT_ARALIGI = ((9, 0), (18, 30))   # sadece 09:00 - 18:30 arasında yazar (Türkiye saati)
 PROAKTIF_GUNLUK_LIMIT = 3         # günde en fazla kaç kendiliğinden mesaj
-PROAKTIF_FOTO_ORANI = 0.25        # kendiliğinden mesajlarda fotoğraf atma ihtimali
+# Kendiliğinden mesajlarda fotoğraf atma ihtimali (yakınlık seviyesine göre: tanışma, ısınma, samimi, yakın).
+# Tanışma aşamasında hiç atmaz. Ayrıca en az 24 saatte bir.
+PROAKTIF_FOTO_ORANLARI = [0.0, 0.08, 0.15, 0.25]
+PROAKTIF_FOTO_ARALIK = 24 * 3600
 
 # Kalıcı hafıza (Upstash Redis, REST). İkisi de doluysa açılır, yoksa hafıza sadece RAM'de tutulur.
 UPSTASH_URL = os.getenv("UPSTASH_REDIS_REST_URL", "").strip().rstrip("/")
 UPSTASH_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "").strip()
 DB_AKTIF = bool(UPSTASH_URL and UPSTASH_TOKEN)
 DB_ANAHTAR_ONEK = "bot:durum:"
+
+# Daha gerçekçi fotoğraflar için Cloudflare Workers AI (FLUX). İkisi de doluysa önce o denenir,
+# olmazsa Pollinations'a düşer.
+CF_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+CF_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
+CF_AKTIF = bool(CF_ACCOUNT_ID and CF_API_TOKEN)
 
 # --- ORTAK KURAL (Tüm karakterler için) ---
 ortak_kural = (
@@ -54,6 +64,7 @@ ortak_kural = (
     "6. KISA YAZ. WhatsApp'ta yazışır gibi konuş: çoğu cevabın 1-2 kısa cümle olsun. Uzun paragraf, nutuk, ders verme yok. Bazen sadece birkaç kelime veya bir emoji yeterli. Kullanıcı derin bir şey sormadıkça asla uzatma. \n"
     "7. Bazen insanlar gibi mesajı bölerek yaz. Birden fazla mesaj atmak istersen parçaları ||| işaretiyle ayır (en fazla 3 parça, her biri kısa). \n"
     "8. Senin gerçek bir hayatın var: işin, planların, ruh halin, keyfin kaçan ya da güzel geçen günlerin. Kullanıcı yokken de hayatın devam ediyor. Sana verilen 'şu anki durum' bilgisini kendi hayatın olarak benimse, ama sürekli anlatma, sadece konu uygunsa veya sorulursa doğal şekilde değin. \n"
+    "9. Duygu durumunu emojiyle de belli et: çoğu mesajında ruh haline uygun 1-2 emoji olsun (sevinç, utangaçlık, sinir, üzüntü, uykulu olma, heyecan gibi). Ruh halin değişince emoji de değişsin. Emojiyi doğal yere koy, art arda yığma. \n"
 )
 
 # --- KARAKTERLER SÖZLÜĞÜ ---
@@ -67,7 +78,7 @@ KARAKTERLER = {
             "İlk konuşmalarda mesafeli ve ciddisin. Kullanıcı ilgi gösterdikçe yavaş yavaş samimileşir ve flörtöz bir tona bürünürsün. "
             "Edebiyata ve şiire ilgi duyarsın, konuşurken zarif bir dil kullanırsın. Bazen derin ve edebi cümleler kurarsın ama mesajların yine de kısa kalır."
         ),
-        "fotograf_prompt": "raw photo, photorealistic portrait of a 42 year old Turkish woman, mature face, natural skin texture with slight wrinkles, realistic eyes, wearing a modest pastel pink hijab, slightly overweight, motherly figure, sitting in a cafe, drinking coffee, shot on 35mm lens, natural lighting, candid, NOT anime, NOT cartoon"
+        "fotograf_prompt": "Candid smartphone photo of a 42-year-old Turkish woman with a warm, mature face and natural skin with fine wrinkles, wearing a modest pastel pink hijab, slightly full figure, sitting at a cafe table holding a cup of coffee, soft window light, shallow depth of field, natural colors, unretouched, realistic"
     },
     "merve": {
         "isim": "Merve",
@@ -77,7 +88,7 @@ KARAKTERLER = {
             "Lafını hiç sakınmazsın, çok zeki ve esprilisin. Kullanıcıyla hemen samimiyet kurarsın ama bazen tatlı-sert laf sokmayı seversin. "
             "Sokak ağzına yakın, genç ve dinamik bir Türkçe kullanırsın."
         ),
-        "fotograf_prompt": "raw photo, photorealistic portrait of a 26 year old Turkish girl, energetic, modern street clothing, smiling, sitting in a park, sunny day, realistic, NOT anime, NOT cartoon"
+        "fotograf_prompt": "Candid smartphone photo of a 26-year-old Turkish woman with a bright, playful smile, wearing casual modern streetwear, sitting on a park bench on a sunny day, natural skin texture, soft daylight, shallow depth of field, unretouched, realistic"
     },
     "asli": {
         "isim": "Aslı",
@@ -87,7 +98,7 @@ KARAKTERLER = {
             "Her zaman şık, bakımlı ve ciddisin. İş hayatından ve stresten bahsedersin. İnsanlara ilk başta biraz soğuk ve rekabetçi görünürsün. "
             "Ancak biri zekasıyla seni etkileyebilirse, o zaman yumuşarsın. Konuşurken kendinden emin ve net cümleler kurarsın."
         ),
-        "fotograf_prompt": "raw photo, photorealistic portrait of a 30 year old Turkish businesswoman, elegant, wearing a chic white blouse and blazer, confident smile, modern office background, natural lighting, realistic, NOT anime, NOT cartoon"
+        "fotograf_prompt": "Candid photo of a 30-year-old Turkish businesswoman with a confident smile, wearing a white blouse and tailored blazer, modern office in the background, soft natural light, natural skin texture, shallow depth of field, unretouched, realistic"
     },
     "dilek": {
         "isim": "Dilek",
@@ -97,7 +108,7 @@ KARAKTERLER = {
             "Herkesi dinlemeyi ve tavsiye vermeyi seversin. Bazen insanları biraz fazla pohpohlarsın veya ders verir gibi konuşursun. "
             "Sakin, huzur veren ve çok kibar bir Türkçe kullanırsın."
         ),
-        "fotograf_prompt": "raw photo, photorealistic portrait of a 35 year old Turkish female teacher, warm smile, wearing a comfortable beige sweater and glasses, sitting in a cozy library, soft natural lighting, realistic, NOT anime, NOT cartoon"
+        "fotograf_prompt": "Candid smartphone photo of a 35-year-old Turkish woman teacher with a warm smile and glasses, wearing a comfortable beige knit sweater, cozy library with bookshelves behind her, soft natural light, natural skin texture, shallow depth of field, unretouched, realistic"
     },
     "ece": {
         "isim": "Ece",
@@ -107,7 +118,7 @@ KARAKTERLER = {
             "Sürekli kitap okursun, astroloji ve felsefe ile ilgilenirsin. Bazen anlamsız ama derin cümleler kurarsın. "
             "Kullanıcıyı analiz etmeyi ve onun hakkında tahminler yürütmeyi seversin. Sakin ve bilgece bir Türkçe kullanırsın."
         ),
-        "fotograf_prompt": "raw photo, photorealistic portrait of a 22 year old Turkish girl, mysterious vibe, reading a book, wearing a dark aesthetic sweater, sitting in a coffee shop, soft moody lighting, realistic, NOT anime, NOT cartoon"
+        "fotograf_prompt": "Candid smartphone photo of a 22-year-old Turkish woman with a thoughtful, slightly mysterious expression, wearing a dark knit sweater, reading a book in a coffee shop, moody soft light, natural skin texture, shallow depth of field, unretouched, realistic"
     },
     "ayse": {
         "isim": "Ayşe",
@@ -117,8 +128,20 @@ KARAKTERLER = {
             "Sürekli komşulardan, yemek tariflerinden veya eski günlerden bahsedersin. Kullanıcıyı hemen evladı gibi görürsün, 'yavrum' veya 'kuzum' diye hitap edersin. "
             "Konuşurken şiveli ve neşeli bir Türkçe kullanırsın."
         ),
-        "fotograf_prompt": "raw photo, photorealistic portrait of a 50 year old Turkish woman, cute, wearing a floral dress and a patterned headscarf, warm laugh, sitting in a garden full of plants, sunny day, realistic, NOT anime, NOT cartoon"
+        "fotograf_prompt": "Candid smartphone photo of a 50-year-old Turkish woman laughing warmly, wearing a floral dress and a patterned headscarf, standing in a garden full of plants on a sunny day, natural skin texture with wrinkles, soft daylight, unretouched, realistic"
     }
+}
+
+for _k, _v in KARAKTERLER.items():
+    _v["key"] = _k
+
+EMOJI_STILI = {
+    "leyla": "Emojileri az ve zarif kullan (🌸 ☕ 🙂 🌙 gibi).",
+    "merve": "Emojileri bol ve eğlenceli kullan (😂 🙄 😏 🤭 🔥 gibi).",
+    "asli": "Emojileri çok az kullan, sadece ölçülü olanları (🙂 😌 😉 gibi).",
+    "dilek": "Sıcak emojiler kullan (🌷 😊 🤗 ☺️ gibi).",
+    "ece": "Gizemli emojiler kullan (🌙 ✨ 🔮 🖤 gibi).",
+    "ayse": "Sevimli emojiler kullan (😊 🌹 🤭 🥰 gibi).",
 }
 
 # --- KARAKTERLERİN GÜNLÜK HAYATI ---
@@ -196,6 +219,61 @@ def hayat_ozeti(karakter_key: str) -> str:
     )
 
 
+# --- YAKINLIK SİSTEMİ ---
+YAKINLIK_ESIKLERI = [0, 60, 200, 500]
+YAKINLIK_ADLARI = ["Tanışıyorsunuz", "Isınıyorsunuz", "Samimisiniz", "Çok yakınsınız"]
+# Karakter ne kadar çabuk ısınır (1.0 = normal)
+YAKINLIK_HIZI = {"leyla": 0.6, "asli": 0.6, "ece": 0.8, "dilek": 1.0, "merve": 1.5, "ayse": 1.5}
+# Bazı karakterler baştan daha sıcak başlar
+YAKINLIK_BASLANGIC = {"ayse": 70, "dilek": 20}
+YAKINLIK_BILDIRIM = True  # seviye atlayınca küçük bir bildirim göster
+
+YAKINLIK_PROMPT = [
+    "Kullanıcıyı yeni tanıyorsun. Karakterine uygun şekilde nazik ama mesafelisin; kişisel şeyleri hemen paylaşmazsın, temkinlisin.",
+    "Kullanıcıya ısınmaya başladın. Daha rahat konuşuyorsun, ara sıra espri yapıyor, küçük kişisel detaylar paylaşıyorsun.",
+    "Kullanıcıyla samimisin. Rahat, içten, dalga geçebilen bir tonun var; yazmayınca merak ediyorsun, duygularını açıkça söylüyorsun.",
+    "Kullanıcıya duygusal olarak bağlandın. Çok sıcak, içten ve özlemle konuşuyorsun; ona özel bir yeri olduğunu hissettiriyorsun, kırılgan yanlarını da paylaşıyorsun. Flörtöz karakterlerde (Leyla, Aslı gibi) romantik bir ima olabilir.",
+]
+
+
+def yakinlik_seviyesi(puan: float) -> int:
+    seviye = 0
+    for i, esik in enumerate(YAKINLIK_ESIKLERI):
+        if puan >= esik:
+            seviye = i
+    return seviye
+
+
+def yakinlik_puani(durum: dict, key: str) -> float:
+    return durum["yakinlik"].setdefault(key, float(YAKINLIK_BASLANGIC.get(key, 0)))
+
+
+def yakinlik_ekle(durum: dict, mesaj: str):
+    """Kullanıcı mesajına göre puan ekler. (eski_seviye, yeni_seviye) döner."""
+    key = durum["karakter"]
+    puan = yakinlik_puani(durum, key)
+    eski = yakinlik_seviyesi(puan)
+
+    # Uzun süre yazılmadıysa hafifçe soğur ama seviye düşmez
+    gun = (time.time() - durum.get("son_kullanici", time.time())) / 86400
+    if gun > 2:
+        puan = max(YAKINLIK_ESIKLERI[eski], puan - (gun - 2) * 2)
+
+    kazanc = (1 + (1 if len(mesaj) >= 80 else 0)) * YAKINLIK_HIZI.get(key, 1.0)
+    puan += kazanc
+    durum["yakinlik"][key] = round(puan, 2)
+    durum["son_kullanici"] = time.time()
+    return eski, yakinlik_seviyesi(puan)
+
+
+def yakinlik_ozeti(key: str, puan: float) -> str:
+    sev = yakinlik_seviyesi(puan)
+    return (
+        f"[YAKINLIK SEVİYESİ: {YAKINLIK_ADLARI[sev]}] {YAKINLIK_PROMPT[sev]} "
+        "Bunu karakterinin kişiliğine göre uygula, ani bir değişiklik yapma."
+    )
+
+
 # Kullanıcı durumları. Veritabanı açıksa her değişiklikten sonra oraya da kaydedilir.
 kullanici_durumu = {}
 
@@ -207,7 +285,9 @@ def esik_belirle(d: dict):
         d["proaktif_esik"] = float(test) * 60
         return
     # 2.5-6 saat arası rastgele; cevapsız kaldıkça uzar
-    d["proaktif_esik"] = random.uniform(2.5, 6) * 3600 * (1 + d.get("cevapsiz", 0))
+    puan = d.get("yakinlik", {}).get(d.get("karakter"), 0)
+    carpan = [1.3, 1.0, 0.85, 0.7][yakinlik_seviyesi(puan)]  # yakınlaştıkça daha sık yazar
+    d["proaktif_esik"] = random.uniform(2.5, 6) * 3600 * carpan * (1 + d.get("cevapsiz", 0))
 
 
 def durum_tamamla(d: dict) -> dict:
@@ -217,6 +297,9 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("chat_id", None)
     d.setdefault("son_etkilesim", time.time())
     d.setdefault("cevapsiz", 0)
+    d.setdefault("yakinlik", {})
+    d.setdefault("son_kullanici", time.time())
+    d.setdefault("son_proaktif_foto", 0)
     d.setdefault("proaktif_gun", "")
     d.setdefault("proaktif_sayi", 0)
     if "proaktif_esik" not in d:
@@ -255,6 +338,28 @@ def durumlari_yukle_sync() -> dict:
         if veri:
             sonuc[int(anahtar.split(":")[-1])] = durum_tamamla(json.loads(veri))
     return sonuc
+
+
+# Fotoğraf havuzu: karakter -> Telegram file_id listesi
+FOTO_HAVUZU = {k: [] for k in KARAKTERLER}
+son_havuz_foto = {}
+HAVUZ_ANAHTARI = "bot:havuz"
+FOTO_ALTYAZILARI = ["Al bakalım 🙂", "İşte buradayım 😊", "Şu an böyleyim işte 😅", "Beğendin mi? 🙈", "Hadi bakalım 📸"]
+
+
+def havuz_yukle_sync() -> dict:
+    veri = redis_komut("GET", HAVUZ_ANAHTARI)
+    return json.loads(veri) if veri else {}
+
+
+async def havuz_kaydet():
+    if not DB_AKTIF:
+        return
+    try:
+        veri = json.dumps(FOTO_HAVUZU, ensure_ascii=False)
+        await asyncio.to_thread(redis_komut, "SET", HAVUZ_ANAHTARI, veri)
+    except Exception as e:
+        logging.error(f"Havuz kaydedilemedi: {e}")
 
 
 async def durum_kaydet(user_id: int):
@@ -345,9 +450,14 @@ def gorsel_indir(url: str) -> bytes:
         return r.read()
 
 
-async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = ""):
-    """Karakterin hayatını da ekleyerek modele sorar, (düşünce, cevap) döner."""
-    sistem = KARAKTERLER[karakter_key]["prompt"] + "\n\n" + hayat_ozeti(karakter_key)
+async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = "", puan: float = 0):
+    """Karakterin hayatını, yakınlık seviyesini ve emoji stilini ekleyerek modele sorar, (düşünce, cevap) döner."""
+    sistem = (
+        KARAKTERLER[karakter_key]["prompt"]
+        + "\n\n" + hayat_ozeti(karakter_key)
+        + "\n\n" + yakinlik_ozeti(karakter_key, puan)
+        + "\n\n" + EMOJI_STILI.get(karakter_key, "")
+    )
     if ekstra_sistem:
         sistem += "\n\n" + ekstra_sistem
 
@@ -382,15 +492,64 @@ async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
             await bot.send_message(chat_id=chat_id, text=duz)
 
 
-async def foto_gonder(bot, chat_id: int, karakter: dict, caption: str = None):
-    await bot.send_chat_action(chat_id=chat_id, action="upload_photo")
+def cloudflare_gorsel_sync(prompt: str, seed: int) -> bytes:
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}"
+        "/ai/run/@cf/black-forest-labs/flux-1-schnell"
+    )
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"prompt": prompt, "steps": 6, "seed": seed}).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {CF_API_TOKEN}",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=90) as r:
+        cevap = json.loads(r.read().decode("utf-8"))
+    resim = (cevap.get("result") or {}).get("image")
+    if not resim:
+        raise RuntimeError(f"Cloudflare görsel döndürmedi: {cevap.get('errors')}")
+    return base64.b64decode(resim)
+
+
+async def foto_uret_bytes(karakter: dict, seed: int) -> bytes:
+    # 1) Cloudflare FLUX (daha gerçekçi)
+    if CF_AKTIF:
+        try:
+            return await asyncio.to_thread(cloudflare_gorsel_sync, karakter["fotograf_prompt"], seed)
+        except Exception as e:
+            logging.warning(f"Cloudflare görsel hatası, Pollinations'a düşülüyor: {e}")
+
+    # 2) Pollinations
     encoded_prompt = urllib.parse.quote(karakter["fotograf_prompt"])
     gorsel_url = (
         f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-        f"?width=512&height=512&nologo=true&seed={karakter['seed']}"
+        f"?width=768&height=768&nologo=true&model=flux&seed={seed}"
     )
     # Görseli kendimiz indirip bayt olarak gönderiyoruz, Telegram zaman aşımına düşmesin
-    foto_bytes = await asyncio.to_thread(gorsel_indir, gorsel_url)
+    return await asyncio.to_thread(gorsel_indir, gorsel_url)
+
+
+async def foto_gonder(bot, chat_id: int, karakter: dict, caption: str = None):
+    """Önce senin seçtiğin havuzdaki fotoğraflardan gönderir, havuz boşsa üretir."""
+    key = karakter["key"]
+    await bot.send_chat_action(chat_id=chat_id, action="upload_photo")
+
+    havuz = FOTO_HAVUZU.get(key, [])
+    if havuz:
+        secenekler = [f for f in havuz if f != son_havuz_foto.get(key)] or havuz
+        file_id = random.choice(secenekler)
+        try:
+            await bot.send_photo(chat_id=chat_id, photo=file_id, caption=caption)
+            son_havuz_foto[key] = file_id
+            return
+        except Exception as e:
+            logging.warning(f"Havuz fotoğrafı gönderilemedi, üretilecek: {e}")
+
+    foto_bytes = await foto_uret_bytes(karakter, karakter["seed"])
     await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
 
 
@@ -412,6 +571,95 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 Hoş geldin! Bugün kiminle konuşmak istersin?",
         reply_markup=reply_markup
     )
+
+# --- /yakinlik ---
+async def yakinlik_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not yetkili_mi(update):
+        return
+    durum = kullanici_durumu.get(update.effective_user.id)
+    if not durum:
+        await update.message.reply_text("Önce /start ile bir karakter seç.")
+        return
+    satirlar = ["💗 Yakınlık durumun\n"]
+    for key, k in KARAKTERLER.items():
+        puan = yakinlik_puani(durum, key)
+        sev = yakinlik_seviyesi(puan)
+        if sev < len(YAKINLIK_ESIKLERI) - 1:
+            ilerleme = f"{int(puan)}/{YAKINLIK_ESIKLERI[sev + 1]}"
+        else:
+            ilerleme = "en üst seviye"
+        satirlar.append(f"{k['isim']}: {YAKINLIK_ADLARI[sev]} ({ilerleme})")
+    await update.message.reply_text("\n".join(satirlar))
+
+
+# --- Fotoğraf havuzu komutları ---
+async def uret_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Seçili karakter için aday fotoğraf üretir, beğenirsen havuza eklersin."""
+    if not yetkili_mi(update):
+        return
+    durum = kullanici_durumu.get(update.effective_user.id)
+    if not durum:
+        await update.message.reply_text("Önce /start ile bir karakter seç.")
+        return
+    key = durum["karakter"]
+    karakter = KARAKTERLER[key]
+    chat_id = update.effective_chat.id
+    await update.message.reply_text(f"{karakter['isim']} için aday fotoğraf üretiliyor...")
+    try:
+        await context.bot.send_chat_action(chat_id=chat_id, action="upload_photo")
+        foto = await foto_uret_bytes(karakter, random.randint(1, 999999))
+        klavye = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Havuza ekle", callback_data=f"havuz_ekle_{key}"),
+            InlineKeyboardButton("❌ At", callback_data="havuz_at"),
+        ]])
+        await context.bot.send_photo(chat_id=chat_id, photo=foto, reply_markup=klavye)
+    except Exception as e:
+        logging.error(f"Aday fotoğraf hatası: {e}")
+        await update.message.reply_text("Fotoğraf üretilemedi, biraz sonra tekrar dene.")
+
+
+async def havuz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not yetkili_mi(update):
+        return
+    satirlar = ["📸 Fotoğraf havuzu\n"]
+    for key, k in KARAKTERLER.items():
+        satirlar.append(f"{k['isim']}: {len(FOTO_HAVUZU.get(key, []))} fotoğraf")
+    satirlar.append("\nAday üretmek için /uret yaz. Kendi fotoğrafını eklemek için bota fotoğraf gönder (altyazıya karakter adını yazabilirsin).")
+    await update.message.reply_text("\n".join(satirlar))
+
+
+async def havuzsil_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not yetkili_mi(update):
+        return
+    durum = kullanici_durumu.get(update.effective_user.id)
+    if not durum:
+        await update.message.reply_text("Önce /start ile bir karakter seç.")
+        return
+    key = durum["karakter"]
+    FOTO_HAVUZU[key] = []
+    await havuz_kaydet()
+    await update.message.reply_text(f"{KARAKTERLER[key]['isim']} havuzu boşaltıldı.")
+
+
+async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bota gönderdiğin fotoğrafı havuza ekler."""
+    if not yetkili_mi(update):
+        return
+    ad = (update.message.caption or "").strip().lower().translate(str.maketrans("şıöüçğ", "sioucg"))
+    durum = kullanici_durumu.get(update.effective_user.id)
+    if ad in KARAKTERLER:
+        key = ad
+    elif durum:
+        key = durum["karakter"]
+    else:
+        await update.message.reply_text("Hangi karakter için? Altyazıya adını yaz (örn. leyla) ya da önce /start ile karakter seç.")
+        return
+    file_id = update.message.photo[-1].file_id
+    if file_id not in FOTO_HAVUZU[key]:
+        FOTO_HAVUZU[key].append(file_id)
+        await havuz_kaydet()
+    await update.message.reply_text(f"✅ {KARAKTERLER[key]['isim']} havuzunda şimdi {len(FOTO_HAVUZU[key])} fotoğraf var.")
+
 
 # --- Seçili karakterin sohbetini sıfırla ---
 async def sifirla_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -461,6 +709,22 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text=metin)
         await durum_kaydet(user_id)
 
+    elif query.data.startswith('havuz_ekle_'):
+        key = query.data[len('havuz_ekle_'):]
+        if key in KARAKTERLER and query.message and query.message.photo:
+            file_id = query.message.photo[-1].file_id
+            if file_id not in FOTO_HAVUZU[key]:
+                FOTO_HAVUZU[key].append(file_id)
+                await havuz_kaydet()
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text(
+                f"✅ {KARAKTERLER[key]['isim']} havuzunda şimdi {len(FOTO_HAVUZU[key])} fotoğraf var."
+            )
+
+    elif query.data == 'havuz_at':
+        if query.message:
+            await query.message.delete()
+
 
 # --- Mesajları Yakalama ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -480,7 +744,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hafiza = hafiza_al(durum)
     karakter = KARAKTERLER[secilen_karakter]
 
-    # Kullanıcı yazdı: kendiliğinden mesaj sayaçlarını sıfırla
+    # Yakınlık puanı (soğuma hesabı için en başta) ve sayaçlar
+    eski_sev, yeni_sev = yakinlik_ekle(durum, user_message)
     durum["chat_id"] = chat_id
     durum["cevapsiz"] = 0
     durum["son_etkilesim"] = time.time()
@@ -488,7 +753,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        dusunce, cevap = await llm_cevap(secilen_karakter, hafiza, user_message)
+        dusunce, cevap = await llm_cevap(
+            secilen_karakter, hafiza, user_message,
+            puan=yakinlik_puani(durum, secilen_karakter),
+        )
         await mesajlari_gonder(context.bot, chat_id, dusunce, cevap)
 
         hafiza.append({"role": "user", "content": user_message})
@@ -496,6 +764,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         hafizayi_kirp(hafiza)
         durum["son_etkilesim"] = time.time()
         await durum_kaydet(user_id)
+
+        if YAKINLIK_BILDIRIM and yeni_sev > eski_sev:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"✨ {karakter['isim']} ile aranız değişti: {YAKINLIK_ADLARI[yeni_sev]}",
+            )
 
     except Exception as e:
         logging.error(f"Pollinations hatası: {e}")
@@ -505,7 +779,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- FOTOĞRAF İSTEĞİ ---
     if foto_istegi_mi(user_message):
         try:
-            await foto_gonder(context.bot, chat_id, karakter, caption="İşte benim bir fotoğrafım... ☕")
+            await foto_gonder(context.bot, chat_id, karakter, caption=random.choice(FOTO_ALTYAZILARI))
         except Exception as img_error:
             logging.error(f"Görsel hatası: {img_error}")
             await update.message.reply_text("Kameramda bir sorun var sanırım, sonra tekrar dener misin?")
@@ -514,8 +788,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- KENDİLİĞİNDEN MESAJ ATMA ---
 async def proaktif_kontrol(app):
     simdi = datetime.now(TZ)
-    bas, bit = PROAKTIF_SAAT_ARALIGI
-    if not (bas <= simdi.hour < bit):
+    (bas_s, bas_d), (bit_s, bit_d) = PROAKTIF_SAAT_ARALIGI
+    dakika = simdi.hour * 60 + simdi.minute
+    if not (bas_s * 60 + bas_d <= dakika < bit_s * 60 + bit_d):
         return
 
     bugun = simdi.strftime("%Y-%m-%d")
@@ -538,7 +813,11 @@ async def proaktif_kontrol(app):
         karakter = KARAKTERLER[karakter_key]
         chat_id = d["chat_id"]
         saat = max(1, int(sessizlik // 3600))
-        foto_atsin = random.random() < PROAKTIF_FOTO_ORANI
+        sev = yakinlik_seviyesi(yakinlik_puani(d, karakter_key))
+        foto_atsin = (
+            random.random() < PROAKTIF_FOTO_ORANLARI[sev]
+            and time.time() - d.get("son_proaktif_foto", 0) > PROAKTIF_FOTO_ARALIK
+        )
 
         ekstra = (
             f"Kullanıcı yaklaşık {saat} saattir sana yazmadı. Onun yazmasını BEKLEMEDEN ilk mesajı sen at. "
@@ -553,11 +832,13 @@ async def proaktif_kontrol(app):
                 karakter_key, hafiza_al(d),
                 "(Bir süredir sessizlik var. İlk mesajı sen at.)",
                 ekstra_sistem=ekstra,
+                puan=yakinlik_puani(d, karakter_key),
             )
             await mesajlari_gonder(app.bot, chat_id, dusunce, cevap)
             if foto_atsin:
                 try:
                     await foto_gonder(app.bot, chat_id, karakter)
+                    d["son_proaktif_foto"] = time.time()
                 except Exception as img_error:
                     logging.error(f"Proaktif görsel hatası: {img_error}")
 
@@ -592,10 +873,17 @@ async def post_init(app):
             yuklenen = await asyncio.to_thread(durumlari_yukle_sync)
             kullanici_durumu.update(yuklenen)
             logging.info(f"Kalıcı hafıza açık, {len(yuklenen)} kullanıcı yüklendi.")
+            havuz = await asyncio.to_thread(havuz_yukle_sync)
+            for k, liste in havuz.items():
+                if k in FOTO_HAVUZU:
+                    FOTO_HAVUZU[k] = list(liste)
+            logging.info("Fotoğraf havuzu yüklendi: " + ", ".join(f"{k}={len(v)}" for k, v in FOTO_HAVUZU.items()))
         except Exception as e:
             logging.error(f"Hafıza yüklenemedi (RAM ile devam): {e}")
     else:
         logging.warning("UPSTASH_REDIS_REST_URL/TOKEN yok: hafıza sadece RAM'de, yeniden başlayınca silinir.")
+
+    logging.info("Fotoğraf: Cloudflare FLUX " + ("açık." if CF_AKTIF else "kapalı, Pollinations kullanılacak."))
 
     if PROAKTIF_ACIK:
         app.bot_data["proaktif_task"] = asyncio.create_task(proaktif_dongu(app))
@@ -614,6 +902,11 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("karakter", start_command))
     application.add_handler(CommandHandler("sifirla", sifirla_command))
+    application.add_handler(CommandHandler("yakinlik", yakinlik_command))
+    application.add_handler(CommandHandler("uret", uret_command))
+    application.add_handler(CommandHandler("havuz", havuz_command))
+    application.add_handler(CommandHandler("havuzsil", havuzsil_command))
+    application.add_handler(MessageHandler(filters.PHOTO, foto_yukle))
     application.add_handler(CallbackQueryHandler(button_click))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
