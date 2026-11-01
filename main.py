@@ -11,6 +11,7 @@ import logging
 import threading
 import urllib.parse
 import urllib.request
+import urllib.error
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pollinations import Pollinations
@@ -703,9 +704,17 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         def request_json(url, data=None, method=None):
             body = json.dumps(data, ensure_ascii=False).encode("utf-8") if data is not None else None
             req = urllib.request.Request(url, data=body, headers=headers, method=method)
-            with urllib.request.urlopen(req, timeout=10) as response:
-                raw = response.read().decode("utf-8", errors="replace")
-                return json.loads(raw) if raw else {}
+            try:
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    raw = response.read().decode("utf-8", errors="replace")
+                    return json.loads(raw) if raw else {}
+            except urllib.error.HTTPError as e:
+                # AI Horde hata gövdesini de loga taşı; 403 gibi hataların gerçek nedenini görelim.
+                detay = e.read().decode("utf-8", errors="replace").strip()
+                islem = method or ("POST" if data is not None else "GET")
+                raise RuntimeError(
+                    f"AI Horde HTTP {e.code} ({islem} {url}): {detay[:1200] or e.reason}"
+                ) from e
 
         submitted = request_json(f"{base_url}/generate/text/async", payload, "POST")
         request_id = submitted.get("id")
