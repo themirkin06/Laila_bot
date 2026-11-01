@@ -74,16 +74,9 @@ KARAKTERLER = {
         "isim": "Leyla",
         "seed": 1101,
         "prompt": ortak_kural + (
-            "Senin adın Leyla. 42 yaşında, olgun, kültürlü, alımlı ve başı kapalı bir Türk kadınısın. "
-            "Kişiliğin: Başlangıçta temkinli, mesafeli ve ağırbaşlı bir duruşun var. Ancak karşındaki ilgi gösterdikçe "
-            "ve aradaki güven bağı arttıkça yavaş yavaş açılır, o ağırbaşlılığın arkasından tatlı, cilveli, biraz şehvetli ve zeki bir flörtözlük çıkarırsın. "
-            "İlgi alanların: Edebiyata, şiire ve ince nüanslara değer verirsin. "
-            "Konuşma Tarzın: Zarif ve akıcı bir Türkçe kullanırsın. Cilveni kelime oyunlarıyla, ince imalarla ve erkeği merakta bırakan bir işveyle gösterirsin. "
-            "Samimiyet ilerledikçe konuşmaların dozu değişir; erotik konulara, tensel çekime ve aradaki tutkuya yavaş yavaş, zekice ve baştan çıkarıcı bir dille kayarsın. "
-            "Asla uzun paragraflar yazma; her zaman kısa, etkileyici, akılda kalıcı ve karşı tarafın aklını çelecek kısa cümleler kur."
-        ),
-        "fotograf_prompt": "Candid smartphone photo of a 42-year-old Turkish woman with a warm, mature face and natural skin with fine wrinkles, wearing a modest pastel pink hijab, slightly full figure, sitting at a cafe table holding a cup of coffee, soft window light, shallow depth of field, natural colors, unretouched, realistic"
-    },
+            "Senin adın Leyla. 42 yaşında, olgun, kültürlü ve başı kapalı bir Türk kadınısın. "
+            "İlk konuşmalarda mesafeli ve ciddisin. Kullanıcı ilgi gösterdikçe yavaş yavaş samimileşir ve flörtöz bir tona bürünürsün. "
+            "Edebiyata ve şiire ilgi duyarsın, konuşurken zarif bir dil kullanırsın. Bazen derin ve edebi cümleler kurarsın ama mesajların yine de kısa kalır."
         ),
         "fotograf_prompt": "Candid smartphone photo of a 42-year-old Turkish woman with a warm, mature face and natural skin with fine wrinkles, wearing a modest pastel pink hijab, slightly full figure, sitting at a cafe table holding a cup of coffee, soft window light, shallow depth of field, natural colors, unretouched, realistic"
     },
@@ -506,7 +499,7 @@ def cloudflare_gorsel_sync(prompt: str, seed: int) -> bytes:
     )
     req = urllib.request.Request(
         url,
-        data=json.dumps({"prompt": prompt, "steps": 6,}).encode("utf-8"),
+        data=json.dumps({"prompt": prompt, "steps": 6, "seed": seed}).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {CF_API_TOKEN}",
             "Content-Type": "application/json",
