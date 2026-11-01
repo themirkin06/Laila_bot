@@ -53,6 +53,11 @@ CF_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
 CF_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
 CF_AKTIF = bool(CF_ACCOUNT_ID and CF_API_TOKEN)
 
+# Pollinations görsel ayarları. Anahtar chat için kullandığın POLLINATIONS_API_KEY ile aynı.
+# Model değiştirmek için Render'a POLLINATIONS_IMAGE_MODEL ekleyebilirsin (örn. flux, gptimage, seedream, nanobanana).
+POLL_KEY = os.getenv("POLLINATIONS_API_KEY", "").strip()
+POLL_MODEL = os.getenv("POLLINATIONS_IMAGE_MODEL", "flux").strip() or "flux"
+
 # --- ORTAK KURAL (Tüm karakterler için) ---
 ortak_kural = (
     "!!! EN ÖNEMLİ KURALLAR !!! \n"
@@ -76,7 +81,7 @@ KARAKTERLER = {
         "prompt": ortak_kural + (
             "Senin adın Leyla. 42 yaşında, olgun, kültürlü ve başı kapalı bir Türk kadınısın. "
             "İlk konuşmalarda mesafeli ve ciddisin. Kullanıcı ilgi gösterdikçe yavaş yavaş samimileşir ve flörtöz bir tona bürünürsün. "
-            "Edebiyata ve şiire ilgi duyarsın, konuşurken zarif bir dil kullanırsın. Bazen derin ve edebi cümleler kurarsın ama mesajların yine de kısa kalır."
+            "Edebiyata ve şiire ilgi duyarsın, konuşurken zarif bir dil kullanırsın. Bazen derin ve edebi cümleler kurarsın ama mesajların yine de kısa kalır. "
             "Konuşma Tarzın: Zarif ve akıcı bir Türkçe kullanırsın. Cilveni kelime oyunlarıyla, ince imalarla ve erkeği merakta bırakan bir işveyle gösterirsin. "
             "Samimiyet ilerledikçe konuşmaların dozu değişir; erotik konulara, tensel çekime ve aradaki tutkuya yavaş yavaş, zekice ve baştan çıkarıcı bir dille kayarsın. "
             "Asla uzun paragraflar yazma; her zaman kısa, etkileyici, akılda kalıcı ve karşı tarafın aklını çelecek kısa cümleler kur."
@@ -137,6 +142,36 @@ KARAKTERLER = {
 
 for _k, _v in KARAKTERLER.items():
     _v["key"] = _k
+
+# Fotoğraf prompt'u = kişi tarifi + rastgele bir sahne + ortak stil.
+# Eller görünmesin diye yakın çekim selfie tarzı seçildi (yapay zeka en çok elde hata yapar).
+FOTO_STIL = (
+    "close-up selfie-style smartphone photo, face and shoulders in frame, hands not visible, "
+    "natural skin texture, soft natural light, shallow depth of field, unretouched, realistic"
+)
+FOTO_KISI = {
+    "leyla": "a 42-year-old Turkish woman with a warm mature face and fine wrinkles, wearing a modest pastel pink hijab",
+    "merve": "a 26-year-old Turkish woman with a bright playful smile, wearing casual modern streetwear",
+    "asli": "a 30-year-old Turkish businesswoman with a confident smile, wearing a white blouse and tailored blazer",
+    "dilek": "a 35-year-old Turkish woman teacher with a warm smile and glasses, wearing a beige knit sweater",
+    "ece": "a 22-year-old Turkish woman with a thoughtful, slightly mysterious expression, wearing a dark knit sweater",
+    "ayse": "a 50-year-old Turkish woman laughing warmly, wearing a floral dress and a patterned headscarf",
+}
+FOTO_SAHNELER = {
+    "leyla": ["in a quiet cafe next to a window", "on a balcony with potted flowers", "in a bookshop between shelves", "in a cozy living room at home"],
+    "merve": ["in a sunny park", "on a university campus", "in a street cafe", "on a rooftop at sunset"],
+    "asli": ["in a modern office", "in a car before work", "in a hotel lobby", "at a rooftop terrace in the evening"],
+    "dilek": ["in a cozy library", "in a classroom with a blackboard behind her", "in a kitchen at home", "in a small garden"],
+    "ece": ["in a dim coffee shop", "on a window seat on a rainy day", "in a library aisle", "outdoors at dusk"],
+    "ayse": ["in a garden full of plants", "in a bright kitchen", "on a house front step", "at a neighborhood market"],
+}
+
+
+def foto_promptu(karakter: dict) -> str:
+    key = karakter["key"]
+    sahne = random.choice(FOTO_SAHNELER[key])
+    return f"{FOTO_STIL}, of {FOTO_KISI[key]}, {sahne}"
+
 
 EMOJI_STILI = {
     "leyla": "Emojileri az ve zarif kullan (🌸 ☕ 🙂 🌙 gibi).",
@@ -400,6 +435,23 @@ def run_health_server():
     server.serve_forever()
 
 
+def keep_alive_loop():
+    """Render ücretsiz planda 15 dk istek gelmezse servis uyur. Kendi adresine 10 dakikada bir istek atar."""
+    url = os.getenv("KEEPALIVE_URL") or os.getenv("RENDER_EXTERNAL_URL")
+    if not url:
+        logging.info("Kendi kendine ping kapalı (RENDER_EXTERNAL_URL yok).")
+        return
+    logging.info(f"Kendi kendine ping açık: {url}")
+    time.sleep(60)
+    while True:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "keepalive"})
+            urllib.request.urlopen(req, timeout=30).read()
+        except Exception as e:
+            logging.warning(f"Ping hatası: {e}")
+        time.sleep(600)
+
+
 # --- Yardımcı fonksiyonlar ---
 def yetkili_mi(update: Update) -> bool:
     if not OWNER_ID:
@@ -519,21 +571,38 @@ def cloudflare_gorsel_sync(prompt: str, seed: int) -> bytes:
 
 
 async def foto_uret_bytes(karakter: dict, seed: int) -> bytes:
-    # 1) Cloudflare FLUX (daha gerçekçi)
+    prompt = foto_promptu(karakter)
+
+    # 1) Cloudflare FLUX (kuruluysa)
     if CF_AKTIF:
         try:
-            return await asyncio.to_thread(cloudflare_gorsel_sync, karakter["fotograf_prompt"], seed)
+            return await asyncio.to_thread(cloudflare_gorsel_sync, prompt, seed)
         except Exception as e:
             logging.warning(f"Cloudflare görsel hatası, Pollinations'a düşülüyor: {e}")
 
-    # 2) Pollinations
-    encoded_prompt = urllib.parse.quote(karakter["fotograf_prompt"])
-    gorsel_url = (
-        f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-        f"?width=768&height=768&nologo=true&model=flux&seed={seed}"
+    # 2) Pollinations: önce anahtarlı yeni adres, olmazsa eski adres
+    encoded = urllib.parse.quote(prompt)
+    adresler = []
+    if POLL_KEY:
+        adresler.append(
+            f"https://gen.pollinations.ai/image/{encoded}"
+            f"?model={POLL_MODEL}&width=768&height=1024&nologo=true&seed={seed}"
+            f"&key={urllib.parse.quote(POLL_KEY)}"
+        )
+    adresler.append(
+        f"https://image.pollinations.ai/prompt/{encoded}"
+        f"?width=768&height=1024&nologo=true&model=flux&seed={seed}"
     )
-    # Görseli kendimiz indirip bayt olarak gönderiyoruz, Telegram zaman aşımına düşmesin
-    return await asyncio.to_thread(gorsel_indir, gorsel_url)
+
+    son_hata = None
+    for url in adresler:
+        try:
+            # Görseli kendimiz indirip bayt olarak gönderiyoruz, Telegram zaman aşımına düşmesin
+            return await asyncio.to_thread(gorsel_indir, url)
+        except Exception as e:
+            son_hata = e
+            logging.warning(f"Görsel alınamadı ({type(e).__name__}): {e}")
+    raise son_hata
 
 
 async def foto_gonder(bot, chat_id: int, karakter: dict, caption: str = None):
@@ -552,7 +621,7 @@ async def foto_gonder(bot, chat_id: int, karakter: dict, caption: str = None):
         except Exception as e:
             logging.warning(f"Havuz fotoğrafı gönderilemedi, üretilecek: {e}")
 
-    foto_bytes = await foto_uret_bytes(karakter, karakter["seed"])
+    foto_bytes = await foto_uret_bytes(karakter, random.randint(1, 999999))
     await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
 
 
@@ -596,8 +665,20 @@ async def yakinlik_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- Fotoğraf havuzu komutları ---
+async def aday_gonder(bot, chat_id: int, key: str):
+    """Aday fotoğraf üretir, altına Havuza ekle / At butonları koyar."""
+    karakter = KARAKTERLER[key]
+    await bot.send_chat_action(chat_id=chat_id, action="upload_photo")
+    foto = await foto_uret_bytes(karakter, random.randint(1, 999999))
+    klavye = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Havuza ekle", callback_data=f"havuz_ekle_{key}"),
+        InlineKeyboardButton("❌ At", callback_data="havuz_at"),
+    ]])
+    await bot.send_photo(chat_id=chat_id, photo=foto, reply_markup=klavye)
+
+
 async def uret_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Seçili karakter için aday fotoğraf üretir, beğenirsen havuza eklersin."""
+    """Seçili karakter için bir aday fotoğraf üretir, beğenirsen havuza eklersin."""
     if not yetkili_mi(update):
         return
     durum = kullanici_durumu.get(update.effective_user.id)
@@ -605,19 +686,38 @@ async def uret_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Önce /start ile bir karakter seç.")
         return
     key = durum["karakter"]
-    karakter = KARAKTERLER[key]
-    chat_id = update.effective_chat.id
-    await update.message.reply_text(f"{karakter['isim']} için aday fotoğraf üretiliyor...")
+    await update.message.reply_text(f"{KARAKTERLER[key]['isim']} için aday fotoğraf üretiliyor...")
     try:
-        await context.bot.send_chat_action(chat_id=chat_id, action="upload_photo")
-        foto = await foto_uret_bytes(karakter, random.randint(1, 999999))
-        klavye = InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ Havuza ekle", callback_data=f"havuz_ekle_{key}"),
-            InlineKeyboardButton("❌ At", callback_data="havuz_at"),
-        ]])
-        await context.bot.send_photo(chat_id=chat_id, photo=foto, reply_markup=klavye)
+        await aday_gonder(context.bot, update.effective_chat.id, key)
     except Exception as e:
         logging.error(f"Aday fotoğraf hatası: {e}")
+        await update.message.reply_text("Fotoğraf üretilemedi, biraz sonra tekrar dene.")
+
+
+async def havuzdoldur_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/havuzdoldur 5 -> seçili karakter için 5 aday gönderir, beğendiklerine tek tıkla eklersin."""
+    if not yetkili_mi(update):
+        return
+    durum = kullanici_durumu.get(update.effective_user.id)
+    if not durum:
+        await update.message.reply_text("Önce /start ile bir karakter seç.")
+        return
+    key = durum["karakter"]
+    n = 4
+    if context.args and context.args[0].isdigit():
+        n = max(1, min(6, int(context.args[0])))
+    await update.message.reply_text(
+        f"{KARAKTERLER[key]['isim']} için {n} aday üretiliyor. Beğendiklerinin altındaki ✅ butonuna bas, olmayanları ❌ ile at."
+    )
+    basarili = 0
+    for _ in range(n):
+        try:
+            await aday_gonder(context.bot, update.effective_chat.id, key)
+            basarili += 1
+        except Exception as e:
+            logging.error(f"Aday fotoğraf hatası: {e}")
+            break
+    if basarili == 0:
         await update.message.reply_text("Fotoğraf üretilemedi, biraz sonra tekrar dene.")
 
 
@@ -627,7 +727,7 @@ async def havuz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     satirlar = ["📸 Fotoğraf havuzu\n"]
     for key, k in KARAKTERLER.items():
         satirlar.append(f"{k['isim']}: {len(FOTO_HAVUZU.get(key, []))} fotoğraf")
-    satirlar.append("\nAday üretmek için /uret yaz. Kendi fotoğrafını eklemek için bota fotoğraf gönder (altyazıya karakter adını yazabilirsin).")
+    satirlar.append("\nTek aday için /uret, birkaç aday için /havuzdoldur 5 yaz. Kendi fotoğrafını eklemek için bota fotoğraf gönder (altyazıya karakter adını yazabilirsin).")
     await update.message.reply_text("\n".join(satirlar))
 
 
@@ -899,6 +999,7 @@ def main():
         return
 
     threading.Thread(target=run_health_server, daemon=True).start()
+    threading.Thread(target=keep_alive_loop, daemon=True).start()
 
     application = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
@@ -907,6 +1008,7 @@ def main():
     application.add_handler(CommandHandler("sifirla", sifirla_command))
     application.add_handler(CommandHandler("yakinlik", yakinlik_command))
     application.add_handler(CommandHandler("uret", uret_command))
+    application.add_handler(CommandHandler("havuzdoldur", havuzdoldur_command))
     application.add_handler(CommandHandler("havuz", havuz_command))
     application.add_handler(CommandHandler("havuzsil", havuzsil_command))
     application.add_handler(MessageHandler(filters.PHOTO, foto_yukle))
