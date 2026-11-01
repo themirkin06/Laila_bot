@@ -6,7 +6,14 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from pollinations import Pollinations
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    MessageHandler,
+    filters,
+    CommandHandler,
+    CallbackQueryHandler
+)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -14,23 +21,22 @@ logging.basicConfig(
 )
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-client = Pollinations(api_key=os.getenv("POLLINATIONS_API_KEY"))
+API_KEY = os.getenv("POLLINATIONS_API_KEY")
 
-# --- ORTAK KURAL (Tüm karakterler için) ---
+client = Pollinations(api_key=API_KEY)
+
 # --- ORTAK KURAL ---
 ortak_kural = (
     "!!! EN ÖNEMLİ KURALLAR !!! \n"
     "1. Sen bir yapay zeka veya bot DEĞİLSİN. Kendini ASLA bot, yapay zeka veya asistan olarak tanımlama. Gerçek bir insan gibi davran. \n"
-    "2. SADECE TÜRKÇE KONUŞACAKSIN. Asla İngilizce kelimeler kullanma, çeviri kokan cümleler kurma. Bir Türk gibi, doğal bir Türkçe ile yaz. \n"
-    "3. Cevabını iki bölümde ver. İlk olarak iç sesini [DÜŞÜNCE] etiketiyle yaz. Sonra kullanıcıya cevabını [CEVAP] etiketiyle yaz. \n"
+    "2. SADECE TÜRKÇE KONUŞACAKSIN. Asla İngilizce kelimeler kullanma, çeviri kokan cümleler kurma. \n"
+    "3. Sadece normal bir mesaj yaz. ASLA [DÜŞÜNCE], [CEVAP] gibi etiketler kullanma. İçinden ne geçiyorsa direkt onu yaz. \n"
     "4. ASLA madde işaretleri (-, *, 1., 2.) kullanma. Düz paragraflar halinde yaz. \n"
-    
-    "!!! GERÇEK İNSAN GİBİ DAVRANMA KURALLARI !!! \n"
-    "5. KESİNLİKLE her cevabının sonuna soru işareti koyma. Bir robot gibi sürekli soru sorma. Karşındaki insanla sadece sohbet et. \n"
-    "6. Bazen sadece onun söylediğini onayla, bazen kendi fikrini söyle, bazen de kendi günlük hayatından (kahve içmek, yorgunluk, hava durumu vb.) küçük bir detay anlat. \n"
-    "7. Meraklı bir anketör gibi değil, karşındakiyle oturup kahve içen rahat bir insan gibi davran. \n"
+    "5. KESİNLİKLE her cevabının sonuna soru işareti koyma. Robot gibi sürekli soru sorma. Gerçek bir insan gibi sohbet et. \n"
+    "6. Bazen sadece onayla, bazen kendi fikrini söyle, bazen de kendi günlük hayatından (kahve içmek, yorgunluk, hava durumu vb.) küçük bir detay anlat. \n"
 )
-# --- KARAKTERLER SÖZLÜĞÜ ---
+
+# --- KARAKTERLER ---
 KARAKTERLER = {
     "leyla": {
         "isim": "Leyla",
@@ -88,7 +94,7 @@ KARAKTERLER = {
     }
 }
 
-# Kullanıcıların hafızasını ve seçtikleri karakteri tutacağımız sözlük
+# Kullanıcı hafızası
 kullanici_durumu = {}
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -107,121 +113,152 @@ def run_health_server():
     server.serve_forever()
 
 
-# --- Başlangıç Menüsü ---
+# --- BAŞLANGIÇ MENÜSÜ ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 5 karakteri buton olarak alt alta ekliyoruz
     klavye = [
-        [InlineKeyboardButton("🌸 Leyla (42, Olgun, Kültürlü)", callback_data='sec_leyla')],
-        [InlineKeyboardButton("⚡ Merve (26, Asi, Enerjik)", callback_data='sec_merve')],
-        [InlineKeyboardButton("💼 Aslı (30, Kariyerli, Şık)", callback_data='sec_asli')],
-        [InlineKeyboardButton("📚 Dilek (35, Anaç, Şefkatli)", callback_data='sec_dilek')],
-        [InlineKeyboardButton("🔮 Ece (22, Gizemli, Zeki)", callback_data='sec_ece')],
-        [InlineKeyboardButton("🍲 Ayşe (50, Tatlı, Dedikoducu)", callback_data='sec_ayse')]
+        [InlineKeyboardButton("🌸 Leyla (42, Olgun)", callback_data='sec_leyla')],
+        [InlineKeyboardButton("⚡ Merve (26, Asi)", callback_data='sec_merve')],
+        [InlineKeyboardButton("💼 Aslı (30, Kariyerli)", callback_data='sec_asli')],
+        [InlineKeyboardButton("📚 Dilek (35, Anaç)", callback_data='sec_dilek')],
+        [InlineKeyboardButton("🔮 Ece (22, Gizemli)", callback_data='sec_ece')],
+        [InlineKeyboardButton("🍲 Ayşe (50, Tatlı)", callback_data='sec_ayse')]
     ]
-    reply_markup = InlineKeyboardMarkup(klavye)
-    
+
     await update.message.reply_text(
         "👋 Hoş geldin! Bugün kiminle konuşmak istersin?",
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(klavye)
     )
 
-# --- Buton Tıklamalarını Yakalama ---
+
+# --- KARAKTER SEÇİMİ ---
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     user_id = query.from_user.id
 
     if query.data.startswith('sec_'):
         secilen_karakter = query.data.split('_')[1]
-        
+
         kullanici_durumu[user_id] = {
             "karakter": secilen_karakter,
             "hafiza": []
         }
-        
+
         karakter_adi = KARAKTERLER[secilen_karakter]["isim"]
-        await query.edit_message_text(text=f"Harika! Şu an {karakter_adi} ile konuşuyorsun. Hadi bir şeyler yaz...")
+
+        await query.edit_message_text(
+            text=f"Harika! Şu an {karakter_adi} ile konuşuyorsun. Hadi bir şeyler yaz..."
+        )
 
 
-# --- Mesajları Yakalama ---
+# --- MESAJLARI YAKALAMA ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_message = update.message.text
-    
+
     if user_id not in kullanici_durumu:
-        await update.message.reply_text("Lütfen önce /start yazarak bir karakter seç.")
+        await update.message.reply_text(
+            "Lütfen önce /start yazarak bir karakter seç."
+        )
         return
 
     secilen_karakter = kullanici_durumu[user_id]["karakter"]
     hafiza = kullanici_durumu[user_id]["hafiza"]
     karakter = KARAKTERLER[secilen_karakter]
 
-    system_prompt = karakter["prompt"]
-    messages = [{"role": "system", "content": system_prompt}]
-    
-    for msg in hafiza[-40:]:
-        messages.append(msg)
-    messages.append({"role": "user", "content": user_message})
-    
-    try:
-        response = client.chat.completions.create(messages=messages, model="openai")
-        raw_text = response.choices[0].message.content
-        
-        if "[DÜŞÜNCE]" in raw_text and "[CEVAP]" in raw_text:
-            parts = raw_text.split("[CEVAP]")
-            dusunce = parts[0].replace("[DÜŞÜNCE]", "").strip()
-            cevap = parts[1].strip()
-        else:
-            dusunce = ""
-            cevap = raw_text
+    messages = [{"role": "system", "content": karakter["prompt"]}]
 
-        formatli_mesaj = f"<i>💭 {dusunce}</i>\n\n{cevap}" if dusunce else cevap
-        await update.message.reply_text(formatli_mesaj, parse_mode="HTML")
-        
+    messages.extend(hafiza[-40:])
+    messages.append({"role": "user", "content": user_message})
+
+    try:
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id,
+            action="typing"
+        )
+
+        # Yapay zekadan gelen cevabı direkt alıyoruz (etiket ayıklama YOK)
+        response = client.chat.completions.create(
+            messages=messages,
+            model="openai"
+        )
+        ai_response = response.choices[0].message.content
+
+        # Direkt gelen mesajı gönder
+        await update.message.reply_text(ai_response)
+
+        # Hafızayı güncelle
         hafiza.append({"role": "user", "content": user_message})
-        hafiza.append({"role": "assistant", "content": cevap})
+        hafiza.append({"role": "assistant", "content": ai_response})
+
         if len(hafiza) > 40:
             kullanici_durumu[user_id]["hafiza"] = hafiza[-40:]
 
         # --- FOTOĞRAF İSTEĞİ ---
-        foto_isimleri = ["fotoğraf", "resim", "selfie", "foto", "resmini", "fotoğrafını", "fotoğrafını atsana"]
+        foto_isimleri = [
+            "fotoğraf", "resim", "selfie", "foto",
+            "resmini", "fotoğrafını", "fotoğrafını atsana"
+        ]
+
         if any(kelime in user_message.lower() for kelime in foto_isimleri):
-            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
-            
+            await context.bot.send_chat_action(
+                chat_id=update.effective_chat.id,
+                action="upload_photo"
+            )
+
             gorsel_prompt = karakter["fotograf_prompt"]
             encoded_prompt = urllib.parse.quote(gorsel_prompt)
-            gorsel_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=512&nologo=true"
-            
+
+            gorsel_url = (
+                f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+                "?width=512&height=512&nologo=true"
+            )
+
             try:
-                # Karakterin ismine uygun altyazı
                 await update.message.reply_photo(
-                    photo=gorsel_url, 
-                    caption=f"İşte benim bir fotoğrafım... ☕"
+                    photo=gorsel_url,
+                    caption="İşte benim bir fotoğrafım... ☕"
                 )
             except Exception as img_error:
                 logging.error(f"Görsel hatası: {img_error}")
-                await update.message.reply_text("Kameramda bir sorun var sanırım, sonra tekrar dener misin?")
+                await update.message.reply_text(
+                    "Kameramda bir sorun var sanırım, sonra tekrar dener misin?"
+                )
 
     except Exception as e:
-        logging.error(f"Pollinations hatası: {e}")
-        await update.message.reply_text("Şu an biraz dalgınım, tekrar dener misin? 😅")
+        logging.exception(f"Pollinations hatası: {e}")
+        await update.message.reply_text(
+            "Şu an biraz dalgınım, tekrar dener misin? 😅"
+        )
 
 
+# --- BOTU BAŞLAT ---
 def main():
     if not TOKEN:
         logging.error("HATA: TELEGRAM_BOT_TOKEN bulunamadı!")
         return
 
-    threading.Thread(target=run_health_server, daemon=True).start()
+    if not API_KEY:
+        logging.error("HATA: POLLINATIONS_API_KEY bulunamadı!")
+        return
+
+    threading.Thread(
+        target=run_health_server,
+        daemon=True
+    ).start()
 
     application = ApplicationBuilder().token(TOKEN).build()
-    
+
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CallbackQueryHandler(button_click))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
 
     logging.info("Bot çalışmaya başladı...")
     application.run_polling()
+
 
 if __name__ == '__main__':
     main()
