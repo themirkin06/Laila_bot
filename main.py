@@ -2,6 +2,7 @@ import os
 import re
 import json
 import base64
+import uuid
 import html
 import time
 import random
@@ -65,11 +66,37 @@ try:
 except ValueError:
     LLM_SICAKLIK = None
 
+# --- SES AYARLARI ---
+# Ses çıkışı (TTS): edge-tts paketi kuruluysa açılır (requirements.txt'ye `edge-tts` ekle).
+# Ses girişi (STT): GROQ_API_KEY varsa açılır (Groq'un ücretsiz Whisper'ı).
+try:
+    import edge_tts
+except Exception:  # paket kurulu değilse ses özelliği sessizce kapalı kalır
+    edge_tts = None
+
+TTS_AKTIF = edge_tts is not None and os.getenv("SES_ACIK", "1") != "0"
+GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
+SES_YAZIYI_GOSTER = True      # sesli mesajının metne çevrilmiş halini göster (doğru anlıyor mu diye)
+SES_MAX_SANIYE = 90           # bundan uzun sesli mesajlar işlenmez
+PROAKTIF_SES_ORANLARI = [0.0, 0.1, 0.25, 0.4]  # kendiliğinden mesajın sesli olma ihtimali (yakınlık seviyesine göre)
+
+# Edge TTS'te Türkçe kadın sesi tek (Emel). Karakterleri hız ve ton farkıyla ayırıyoruz.
+TR_SES = "tr-TR-EmelNeural"
+SES_AYARLARI = {
+    "leyla": (TR_SES, "-10%", "-2Hz"),
+    "merve": (TR_SES, "+10%", "+4Hz"),
+    "asli": (TR_SES, "+0%", "-3Hz"),
+    "dilek": (TR_SES, "-5%", "+0Hz"),
+    "ece": (TR_SES, "-8%", "+1Hz"),
+    "ayse": (TR_SES, "-5%", "-5Hz"),
+}
+SES_MODLARI = ["Kapalı", "Sesli mesaj atarsan sesle cevap verir", "Her zaman sesli cevap verir"]
+
 # --- ORTAK KURAL (Tüm karakterler için) ---
 ortak_kural = (
     "KURALLAR: \n"
     "1. Sen gerçek bir insansın. Asla yapay zeka, bot veya asistan olduğunu söyleme. \n"
-    "2. Doğal, akıcı ve DİLBİLGİSİ DOĞRU Türkçe yaz; noktalama ve yazım düzgün olsun. İngilizce kelime veya çeviri kokan cümle kullanma. Emin olmadığın deyim ya da kalıp yerine basit ve yaygın kelimeyi seç. Kullanıcıya baştan sona aynı hitabı (sen ya da siz) kullan. \n"
+    "2. Doğal, akıcı ve DİLBİLGİSİ DOĞRU Türkçe yaz; noktalama ve yazım düzgün olsun. İngilizce kelime veya çeviri kokan cümle kullanma. Basit ve tam cümleler kur (özne, nesne, yüklem yerinde olsun). Emin olmadığın deyim, atasözü ya da kalıbı hiç kullanma, onun yerine basit ve yaygın kelimeyi seç. Sayıları yazıyla yaz (5 değil beş). Kullanıcıya baştan sona aynı hitabı (sen ya da siz) kullan. \n"
     "3. Cevap formatı: önce iç sesini [DÜŞÜNCE] etiketiyle TEK KISA CÜMLE olarak yaz, sonra [CEVAP] etiketiyle cevabını yaz. \n"
     "4. WhatsApp'ta yazışır gibi KISA yaz: çoğu zaman 1-2 kısa cümle. Madde işareti, nutuk ve ders verme yok. İstersen mesajı ||| işaretiyle en fazla 3 kısa parçaya böl. \n"
     "5. Anketör gibi sürekli soru sorma. Sohbet et: bazen onayla, bazen kendi fikrini söyle, bazen gününden küçük bir detay anlat. \n"
@@ -92,7 +119,7 @@ KARAKTERLER = {
             "Samimiyet ilerledikçe konuşmaların dozu değişir; erotik konulara, tensel çekime ve aradaki tutkuya yavaş yavaş, zekice ve baştan çıkarıcı bir dille kayarsın. "
             "Asla uzun paragraflar yazma; her zaman kısa, etkileyici, akılda kalıcı ve karşı tarafın aklını çelecek kısa cümleler kur."
         ),
-        "fotograf_prompt": "Candid smartphone photo of a 38-year-old Turkish woman with a smooth, youthful face, flawless natural skin, wearing a modest pastel pink hijab, slightly full figure, sitting at a cafe table holding a cup of coffee, soft window light, shallow depth of field, natural colors, unretouched, realistic"
+        "fotograf_prompt": "Candid smartphone photo of a 42-year-old Turkish woman with a warm, mature face and natural skin with fine wrinkles, wearing a modest pastel pink hijab, slightly full figure, sitting at a cafe table holding a cup of coffee, soft window light, shallow depth of field, natural colors, unretouched, realistic"
     },
     "merve": {
         "isim": "Merve",
@@ -156,7 +183,7 @@ FOTO_STIL = (
     "natural skin texture, soft natural light, shallow depth of field, unretouched, realistic"
 )
 FOTO_KISI = {
-    "leyla": "a 38-year-old Turkish woman with a beautiful, youthful face and smooth skin, wearing a modest pastel pink hijab",
+    "leyla": "a 42-year-old Turkish woman with a warm mature face and fine wrinkles, wearing a modest pastel pink hijab",
     "merve": "a 26-year-old Turkish woman with a bright playful smile, wearing casual modern streetwear",
     "asli": "a 30-year-old Turkish businesswoman with a confident smile, wearing a white blouse and tailored blazer",
     "dilek": "a 35-year-old Turkish woman teacher with a warm smile and glasses, wearing a beige knit sweater",
@@ -177,6 +204,53 @@ def foto_promptu(karakter: dict) -> str:
     key = karakter["key"]
     sahne = random.choice(FOTO_SAHNELER[key])
     return f"{FOTO_STIL}, of {FOTO_KISI[key]}, {sahne}"
+
+
+# Türkçe kalitesi: gerçek hatalardan çıkarılmış yanlış/doğru örnekleri.
+TURKCE_KONTROL = (
+    "[TÜRKÇE KONTROL] Sık yapılan hatalar, bunlardan kaçın:\n"
+    "YANLIŞ: Karamsar yerin tuttuysa → DOĞRU: Canın sıkkınsa\n"
+    "YANLIŞ: Gece karanlığı çeker ya → DOĞRU: Gece insanı karamsarlığa çekiyor ya\n"
+    "YANLIŞ: Kısa bir duş ya da yüzünü yıka (iki yarım cümle) → DOĞRU: Kısa bir duş al ya da yüzünü yıka\n"
+    "YANLIŞ: 1 bardak sıcak bir şey → DOĞRU: Bir bardak sıcak çay\n"
+    "YANLIŞ: İyi gelir mi sana? → DOĞRU: Sana iyi gelir bence.\n"
+    "YANLIŞ: Tadına tam varın → DOĞRU: Tadını çıkar\n"
+    "YANLIŞ: Bu görüntüye karşı içimde yumuşak bir yer açılıyor → DOĞRU: Bu görüntü içimi yumuşattı\n"
+    "Bu örnekleri aynen kullanma; sadece bu tür çeviri kokan ve uydurma kalıplardan kaçın."
+)
+
+# İkinci geçiş: cevabı bir kez daha modele düzelttirir. Her mesaj için ikinci bir istek harcar, o yüzden varsayılan kapalı.
+# Açmak için Render'a TURKCE_DUZELT=1 ekle.
+TURKCE_DUZELT = os.getenv("TURKCE_DUZELT", "0") == "1"
+TURKCE_DUZELT_PROMPT = (
+    "Sen titiz bir Türkçe editörsün. Sana verilen kısa sohbet mesajındaki dilbilgisi, yazım, noktalama ve "
+    "çeviri kokan ya da uydurma ifade hatalarını düzelt; doğal ve akıcı bir Türkçe yap. "
+    "Anlamı, tonu, uzunluğu, emojileri ve ||| işaretlerini AYNEN koru. Yeni cümle ekleme, açıklama yapma. "
+    "Sadece düzeltilmiş mesajı yaz."
+)
+
+
+async def turkce_duzelt(metin: str) -> str:
+    """Cevabı düzelttirir. Hata olursa ya da sonuç şüpheliyse orijinali döndürür."""
+    try:
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
+            messages=[
+                {"role": "system", "content": TURKCE_DUZELT_PROMPT},
+                {"role": "user", "content": metin},
+            ],
+            model=LLM_MODEL,
+        )
+        yeni = (response.choices[0].message.content or "").strip()
+    except Exception as e:
+        logging.warning(f"Türkçe düzeltme başarısız, orijinal kullanılıyor: {e}")
+        return metin
+    yeni = cevabi_ayristir(yeni)[1]  # model etiket eklediyse temizle
+    if not yeni or not (0.5 * len(metin) <= len(yeni) <= 1.5 * len(metin)):
+        return metin
+    if yeni.count("|||") != metin.count("|||"):
+        return metin
+    return yeni
 
 
 # Örnek konuşmalar: modele üslubu göstermek için (yalnızca stil, birebir tekrar edilmez).
@@ -386,6 +460,7 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("yakinlik", {})
     d.setdefault("son_kullanici", time.time())
     d.setdefault("son_proaktif_foto", 0)
+    d.setdefault("ses_modu", 1)
     d.setdefault("proaktif_gun", "")
     d.setdefault("proaktif_sayi", 0)
     if "proaktif_esik" not in d:
@@ -567,6 +642,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
         + "\n\n" + EMOJI_STILI.get(karakter_key, "")
         + "\n\n" + ornek_diyalog(karakter_key)
+        + "\n\n" + TURKCE_KONTROL
     )
     if ekstra_sistem:
         sistem += "\n\n" + ekstra_sistem
@@ -587,7 +663,10 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         logging.warning(f"Sıcaklık parametresiyle başarısız ({e}), onsuz deneniyor.")
         parametreler.pop("temperature")
         response = await asyncio.to_thread(client.chat.completions.create, **parametreler)
-    return cevabi_ayristir(response.choices[0].message.content)
+    dusunce, cevap = cevabi_ayristir(response.choices[0].message.content)
+    if TURKCE_DUZELT:
+        cevap = await turkce_duzelt(cevap)
+    return dusunce, cevap
 
 
 async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
@@ -686,6 +765,86 @@ async def foto_gonder(bot, chat_id: int, karakter: dict, caption: str = None):
 
     foto_bytes = await foto_uret_bytes(karakter, random.randint(1, 999999))
     await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
+
+
+# --- SES: metinden sese (Edge TTS) ve sesten metne (Groq Whisper) ---
+EMOJI_KALIBI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200d]+")
+
+
+def ses_metni(cevap: str) -> str:
+    """Konuşulacak metni temizler: emojileri ve ||| işaretini kaldırır."""
+    parcalar = []
+    for parca in cevap.split("|||"):
+        parca = re.sub(r"\s+", " ", EMOJI_KALIBI.sub("", parca)).strip()
+        if parca:
+            parcalar.append(parca if parca[-1] in ".!?…" else parca + ".")
+    return " ".join(parcalar)[:600]
+
+
+async def ses_uret(key: str, metin: str) -> bytes:
+    voice, rate, pitch = SES_AYARLARI[key]
+    iletisim = edge_tts.Communicate(metin, voice, rate=rate, pitch=pitch)
+    veri = bytearray()
+    async for parca in iletisim.stream():
+        if parca["type"] == "audio":
+            veri.extend(parca["data"])
+    if not veri:
+        raise RuntimeError("Ses üretilemedi (boş yanıt)")
+    return bytes(veri)
+
+
+def multipart_hazirla(alanlar: dict, dosya_adi: str, icerik: bytes, tip: str):
+    sinir = uuid.uuid4().hex
+    parcalar = []
+    for ad, deger in alanlar.items():
+        parcalar.append(
+            f'--{sinir}\r\nContent-Disposition: form-data; name="{ad}"\r\n\r\n{deger}\r\n'.encode("utf-8")
+        )
+    parcalar.append(
+        (f'--{sinir}\r\nContent-Disposition: form-data; name="file"; filename="{dosya_adi}"\r\n'
+         f"Content-Type: {tip}\r\n\r\n").encode("utf-8") + icerik + b"\r\n"
+    )
+    parcalar.append(f"--{sinir}--\r\n".encode("utf-8"))
+    return sinir, b"".join(parcalar)
+
+
+def groq_cevir_sync(ses: bytes) -> str:
+    sinir, govde = multipart_hazirla(
+        {"model": "whisper-large-v3-turbo", "language": "tr", "response_format": "json"},
+        "ses.ogg", ses, "audio/ogg",
+    )
+    req = urllib.request.Request(
+        "https://api.groq.com/openai/v1/audio/transcriptions",
+        data=govde,
+        headers={
+            "Authorization": f"Bearer {GROQ_KEY}",
+            "Content-Type": f"multipart/form-data; boundary={sinir}",
+            "User-Agent": "Mozilla/5.0",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return (json.loads(r.read().decode("utf-8")).get("text") or "").strip()
+
+
+def ses_istendi_mi(durum: dict, sesli_girdi: bool) -> bool:
+    mod = durum.get("ses_modu", 1)
+    return mod == 2 or (mod == 1 and sesli_girdi)
+
+
+async def cevabi_ilet(bot, chat_id: int, key: str, dusunce: str, cevap: str, sesle: bool = False):
+    """Cevabı sesli mesaj ya da yazı olarak gönderir. Ses başarısız olursa yazıya döner."""
+    if sesle and TTS_AKTIF:
+        metin = ses_metni(cevap)
+        if metin:
+            try:
+                await bot.send_chat_action(chat_id=chat_id, action="record_voice")
+                veri = await asyncio.wait_for(ses_uret(key, metin), timeout=40)
+                await bot.send_voice(chat_id=chat_id, voice=veri)
+                return
+            except Exception as e:
+                logging.warning(f"Sesli cevap gönderilemedi, yazıya dönülüyor: {e}")
+    await mesajlari_gonder(bot, chat_id, dusunce, cevap)
 
 
 # --- Başlangıç Menüsü ---
@@ -893,13 +1052,12 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- Mesajları Yakalama ---
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str, sesli_girdi: bool = False):
     if not yetkili_mi(update):
         return
 
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-    user_message = update.message.text
 
     if user_id not in kullanici_durumu:
         await update.message.reply_text("Lütfen önce /start yazarak bir karakter seç.")
@@ -923,7 +1081,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             secilen_karakter, hafiza, user_message,
             puan=yakinlik_puani(durum, secilen_karakter),
         )
-        await mesajlari_gonder(context.bot, chat_id, dusunce, cevap)
+        await cevabi_ilet(
+            context.bot, chat_id, secilen_karakter, dusunce, cevap,
+            sesle=ses_istendi_mi(durum, sesli_girdi),
+        )
 
         hafiza.append({"role": "user", "content": user_message})
         hafiza.append({"role": "assistant", "content": hafiza_kaydi(dusunce, cevap)})
@@ -949,6 +1110,58 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as img_error:
             logging.error(f"Görsel hatası: {img_error}")
             await update.message.reply_text("Kameramda bir sorun var sanırım, sonra tekrar dener misin?")
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await mesaji_isle(update, context, update.message.text)
+
+
+async def ses_isle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gelen sesli mesajı yazıya çevirir ve normal mesaj gibi işler."""
+    if not yetkili_mi(update):
+        return
+    if update.effective_user.id not in kullanici_durumu:
+        await update.message.reply_text("Lütfen önce /start yazarak bir karakter seç.")
+        return
+    if not GROQ_KEY:
+        await update.message.reply_text("Sesli mesajı anlamam için GROQ_API_KEY ayarı gerekiyor. Şimdilik yazarak konuşalım 🙂")
+        return
+    if update.message.voice.duration and update.message.voice.duration > SES_MAX_SANIYE:
+        await update.message.reply_text("Bu ses biraz uzun oldu, daha kısa söyler misin?")
+        return
+
+    chat_id = update.effective_chat.id
+    try:
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        dosya = await update.message.voice.get_file()
+        ses = bytes(await dosya.download_as_bytearray())
+        metin = await asyncio.to_thread(groq_cevir_sync, ses)
+    except Exception as e:
+        logging.error(f"Ses çözme hatası: {e}")
+        await update.message.reply_text("Sesini anlayamadım, tekrar söyler misin?")
+        return
+    if not metin:
+        await update.message.reply_text("Sesini anlayamadım, tekrar söyler misin?")
+        return
+
+    if SES_YAZIYI_GOSTER:
+        await update.message.reply_text(f"🎙️ {metin}")
+    await mesaji_isle(update, context, metin, sesli_girdi=True)
+
+
+async def ses_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/ses: ses modunu değiştirir (kapalı -> sesle gelince sesle -> hep sesli)."""
+    if not yetkili_mi(update):
+        return
+    user_id = update.effective_user.id
+    durum = kullanici_durumu.get(user_id)
+    if not durum:
+        await update.message.reply_text("Önce /start ile bir karakter seç.")
+        return
+    durum["ses_modu"] = (durum.get("ses_modu", 1) + 1) % 3
+    await durum_kaydet(user_id)
+    uyari = "" if TTS_AKTIF else "\n(Dikkat: ses üretimi şu an kapalı, edge-tts kurulu değil.)"
+    await update.message.reply_text(f"🔊 Ses modu: {SES_MODLARI[durum['ses_modu']]}{uyari}")
 
 
 # --- KENDİLİĞİNDEN MESAJ ATMA ---
@@ -1000,7 +1213,10 @@ async def proaktif_kontrol(app):
                 ekstra_sistem=ekstra,
                 puan=yakinlik_puani(d, karakter_key),
             )
-            await mesajlari_gonder(app.bot, chat_id, dusunce, cevap)
+            ses_atsin = TTS_AKTIF and d.get("ses_modu", 1) != 0 and (
+                d.get("ses_modu", 1) == 2 or random.random() < PROAKTIF_SES_ORANLARI[sev]
+            )
+            await cevabi_ilet(app.bot, chat_id, karakter_key, dusunce, cevap, sesle=ses_atsin)
             if foto_atsin:
                 try:
                     await foto_gonder(app.bot, chat_id, karakter)
@@ -1050,6 +1266,9 @@ async def post_init(app):
         logging.warning("UPSTASH_REDIS_REST_URL/TOKEN yok: hafıza sadece RAM'de, yeniden başlayınca silinir.")
 
     logging.info("Fotoğraf: Cloudflare FLUX " + ("açık." if CF_AKTIF else "kapalı, Pollinations kullanılacak."))
+    logging.info("Türkçe düzeltme geçişi: " + ("açık." if TURKCE_DUZELT else "kapalı."))
+    logging.info("Ses çıkışı (edge-tts): " + ("açık." if TTS_AKTIF else "kapalı (paket kurulu değil ya da SES_ACIK=0)."))
+    logging.info("Ses girişi (Groq): " + ("açık." if GROQ_KEY else "kapalı (GROQ_API_KEY yok)."))
 
     if PROAKTIF_ACIK:
         app.bot_data["proaktif_task"] = asyncio.create_task(proaktif_dongu(app))
@@ -1069,6 +1288,8 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("karakter", start_command))
     application.add_handler(CommandHandler("sifirla", sifirla_command))
+    application.add_handler(CommandHandler("ses", ses_command))
+    application.add_handler(MessageHandler(filters.VOICE, ses_isle))
     application.add_handler(CommandHandler("yakinlik", yakinlik_command))
     application.add_handler(CommandHandler("uret", uret_command))
     application.add_handler(CommandHandler("havuzdoldur", havuzdoldur_command))
