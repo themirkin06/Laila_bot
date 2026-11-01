@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import html
 import time
 import random
@@ -35,6 +36,12 @@ PROAKTIF_ACIK = os.getenv("PROAKTIF_ACIK", "1") != "0"
 PROAKTIF_SAAT_ARALIGI = (9, 23)   # sadece bu saatler arasında yazar (Türkiye saati)
 PROAKTIF_GUNLUK_LIMIT = 3         # günde en fazla kaç kendiliğinden mesaj
 PROAKTIF_FOTO_ORANI = 0.25        # kendiliğinden mesajlarda fotoğraf atma ihtimali
+
+# Kalıcı hafıza (Upstash Redis, REST). İkisi de doluysa açılır, yoksa hafıza sadece RAM'de tutulur.
+UPSTASH_URL = os.getenv("UPSTASH_REDIS_REST_URL", "").strip().rstrip("/")
+UPSTASH_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "").strip()
+DB_AKTIF = bool(UPSTASH_URL and UPSTASH_TOKEN)
+DB_ANAHTAR_ONEK = "bot:durum:"
 
 # --- ORTAK KURAL (Tüm karakterler için) ---
 ortak_kural = (
@@ -189,8 +196,7 @@ def hayat_ozeti(karakter_key: str) -> str:
     )
 
 
-# Kullanıcıların hafızasını ve seçtikleri karakteri tutacağımız sözlük
-# (Şimdilik RAM'de: servis yeniden başlayınca silinir.)
+# Kullanıcı durumları. Veritabanı açıksa her değişiklikten sonra oraya da kaydedilir.
 kullanici_durumu = {}
 
 
@@ -204,18 +210,64 @@ def esik_belirle(d: dict):
     d["proaktif_esik"] = random.uniform(2.5, 6) * 3600 * (1 + d.get("cevapsiz", 0))
 
 
-def yeni_durum(karakter: str, chat_id: int) -> dict:
-    d = {
-        "karakter": karakter,
-        "hafiza": [],
-        "chat_id": chat_id,
-        "son_etkilesim": time.time(),
-        "cevapsiz": 0,
-        "proaktif_gun": "",
-        "proaktif_sayi": 0,
-    }
-    esik_belirle(d)
+def durum_tamamla(d: dict) -> dict:
+    """Eksik alanları doldurur (eski kayıtlarla uyumluluk için)."""
+    d.setdefault("karakter", "leyla")
+    d.setdefault("hafizalar", {})
+    d.setdefault("chat_id", None)
+    d.setdefault("son_etkilesim", time.time())
+    d.setdefault("cevapsiz", 0)
+    d.setdefault("proaktif_gun", "")
+    d.setdefault("proaktif_sayi", 0)
+    if "proaktif_esik" not in d:
+        esik_belirle(d)
     return d
+
+
+def yeni_durum(karakter: str, chat_id: int) -> dict:
+    return durum_tamamla({"karakter": karakter, "chat_id": chat_id})
+
+
+def hafiza_al(durum: dict) -> list:
+    """Seçili karakterin ayrı hafızasını döndürür."""
+    return durum["hafizalar"].setdefault(durum["karakter"], [])
+
+
+# --- Kalıcı hafıza (Upstash Redis REST) ---
+def redis_komut(*args):
+    req = urllib.request.Request(
+        UPSTASH_URL,
+        data=json.dumps(list(args)).encode("utf-8"),
+        headers={"Authorization": f"Bearer {UPSTASH_TOKEN}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        cevap = json.loads(r.read().decode("utf-8"))
+    if isinstance(cevap, dict) and cevap.get("error"):
+        raise RuntimeError(cevap["error"])
+    return cevap.get("result") if isinstance(cevap, dict) else cevap
+
+
+def durumlari_yukle_sync() -> dict:
+    sonuc = {}
+    for anahtar in redis_komut("KEYS", DB_ANAHTAR_ONEK + "*") or []:
+        veri = redis_komut("GET", anahtar)
+        if veri:
+            sonuc[int(anahtar.split(":")[-1])] = durum_tamamla(json.loads(veri))
+    return sonuc
+
+
+async def durum_kaydet(user_id: int):
+    if not DB_AKTIF:
+        return
+    durum = kullanici_durumu.get(user_id)
+    if not durum:
+        return
+    try:
+        veri = json.dumps(durum, ensure_ascii=False)  # anlık kopya, kayıt sırasında değişmesin
+        await asyncio.to_thread(redis_komut, "SET", f"{DB_ANAHTAR_ONEK}{user_id}", veri)
+    except Exception as e:
+        logging.error(f"Hafıza kaydedilemedi: {e}")
 
 
 # --- Render sağlık sunucusu ---
@@ -361,6 +413,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+# --- Seçili karakterin sohbetini sıfırla ---
+async def sifirla_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not yetkili_mi(update):
+        return
+    user_id = update.effective_user.id
+    durum = kullanici_durumu.get(user_id)
+    if not durum:
+        await update.message.reply_text("Önce /start ile bir karakter seç.")
+        return
+    karakter_adi = KARAKTERLER[durum["karakter"]]["isim"]
+    durum["hafizalar"][durum["karakter"]] = []
+    await durum_kaydet(user_id)
+    await update.message.reply_text(f"{karakter_adi} ile olan sohbet geçmişi silindi. Diğer karakterlere dokunulmadı.")
+
+
 # --- Buton Tıklamalarını Yakalama ---
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -374,10 +441,25 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if secilen_karakter not in KARAKTERLER:
             return
 
-        kullanici_durumu[user_id] = yeni_durum(secilen_karakter, query.message.chat_id)
+        chat_id = query.message.chat_id
+        mevcut = kullanici_durumu.get(user_id)
+        if mevcut:
+            # Karakter değiştirince diğerlerinin sohbeti silinmez, kaldığın yerden devam edersin
+            mevcut["karakter"] = secilen_karakter
+            mevcut["chat_id"] = chat_id
+            mevcut["cevapsiz"] = 0
+            mevcut["son_etkilesim"] = time.time()
+            esik_belirle(mevcut)
+        else:
+            kullanici_durumu[user_id] = yeni_durum(secilen_karakter, chat_id)
 
         karakter_adi = KARAKTERLER[secilen_karakter]["isim"]
-        await query.edit_message_text(text=f"Harika! Şu an {karakter_adi} ile konuşuyorsun. Hadi bir şeyler yaz...")
+        if hafiza_al(kullanici_durumu[user_id]):
+            metin = f"{karakter_adi} ile kaldığınız yerden devam ediyorsun. Hadi bir şeyler yaz..."
+        else:
+            metin = f"Harika! Şu an {karakter_adi} ile konuşuyorsun. Hadi bir şeyler yaz..."
+        await query.edit_message_text(text=metin)
+        await durum_kaydet(user_id)
 
 
 # --- Mesajları Yakalama ---
@@ -395,7 +477,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     durum = kullanici_durumu[user_id]
     secilen_karakter = durum["karakter"]
-    hafiza = durum["hafiza"]
+    hafiza = hafiza_al(durum)
     karakter = KARAKTERLER[secilen_karakter]
 
     # Kullanıcı yazdı: kendiliğinden mesaj sayaçlarını sıfırla
@@ -413,6 +495,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         hafiza.append({"role": "assistant", "content": hafiza_kaydi(dusunce, cevap)})
         hafizayi_kirp(hafiza)
         durum["son_etkilesim"] = time.time()
+        await durum_kaydet(user_id)
 
     except Exception as e:
         logging.error(f"Pollinations hatası: {e}")
@@ -467,7 +550,7 @@ async def proaktif_kontrol(app):
 
         try:
             dusunce, cevap = await llm_cevap(
-                karakter_key, d["hafiza"],
+                karakter_key, hafiza_al(d),
                 "(Bir süredir sessizlik var. İlk mesajı sen at.)",
                 ekstra_sistem=ekstra,
             )
@@ -478,12 +561,14 @@ async def proaktif_kontrol(app):
                 except Exception as img_error:
                     logging.error(f"Proaktif görsel hatası: {img_error}")
 
-            d["hafiza"].append({"role": "assistant", "content": hafiza_kaydi(dusunce, cevap)})
-            hafizayi_kirp(d["hafiza"])
+            d_hafiza = hafiza_al(d)
+            d_hafiza.append({"role": "assistant", "content": hafiza_kaydi(dusunce, cevap)})
+            hafizayi_kirp(d_hafiza)
             d["cevapsiz"] += 1
             d["proaktif_sayi"] += 1
             d["son_etkilesim"] = time.time()
             esik_belirle(d)
+            await durum_kaydet(user_id)
             logging.info(f"{karakter['isim']} kendiliğinden mesaj attı.")
         except Exception as e:
             logging.error(f"Proaktif mesaj hatası: {e}")
@@ -502,6 +587,16 @@ async def proaktif_dongu(app):
 
 
 async def post_init(app):
+    if DB_AKTIF:
+        try:
+            yuklenen = await asyncio.to_thread(durumlari_yukle_sync)
+            kullanici_durumu.update(yuklenen)
+            logging.info(f"Kalıcı hafıza açık, {len(yuklenen)} kullanıcı yüklendi.")
+        except Exception as e:
+            logging.error(f"Hafıza yüklenemedi (RAM ile devam): {e}")
+    else:
+        logging.warning("UPSTASH_REDIS_REST_URL/TOKEN yok: hafıza sadece RAM'de, yeniden başlayınca silinir.")
+
     if PROAKTIF_ACIK:
         app.bot_data["proaktif_task"] = asyncio.create_task(proaktif_dongu(app))
         logging.info("Kendiliğinden mesaj özelliği açık.")
@@ -517,6 +612,8 @@ def main():
     application = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
     application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("karakter", start_command))
+    application.add_handler(CommandHandler("sifirla", sifirla_command))
     application.add_handler(CallbackQueryHandler(button_click))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
