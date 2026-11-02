@@ -355,13 +355,16 @@ HAYAT = {
 
 GUNLUK_OLAYLAR = [
     "bugün keyfin yerinde",
-    "bugün biraz yorgunsun",
+    "bugün biraz yorgunsun, uykunu alamamışsın",
     "bugün canın sıkkın, sebepsiz bir huzursuzluk var",
     "bugün başın hafif ağrıyor",
     "bugün enerjin yüksek",
     "bugün biraz dalgınsın",
     "bugün çok güzel bir haber aldın ama henüz kimseye söylemedin",
-    "bugün erkenden kalktın, sabahtan beri bir şeylerle uğraşıyorsun",
+    "bugün günün berbat geçti, biraz dertleşmek istiyorsun",
+    "bugün kendini çok güzel hissediyorsun, özgüvenin yerinde",
+    "bugün hava çok kapalı, içinden hiçbir şey yapmak gelmiyor",
+    "bugün çok açsın ve canın tatlı bir şeyler çekiyor",
 ]
 
 
