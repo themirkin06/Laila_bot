@@ -23,6 +23,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+# httpx her isteği URL'siyle (içinde bot token'ı var) loglar. Token loglara sızmasın diye sustur.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 client = Pollinations(api_key=os.getenv("POLLINATIONS_API_KEY"))
@@ -595,7 +598,12 @@ def cevabi_ayristir(raw_text: str):
     m = re.search(r"\[\s*cevap\s*\]", raw_text, flags=re.I)
     if m:
         dusunce = re.sub(dusunce_etiket, "", raw_text[:m.start()], flags=re.I).strip()
-        cevap = raw_text[m.end():].strip()
+        sonrasi = raw_text[m.end():]
+        # Küçük modeller bazen konuşmayı kendi uzatır ve etiketleri tekrar eder; ilk cevapta kes
+        tekrar = re.search(r"\[\s*(?:cevap|d[üu]şünce)\s*\]", sonrasi, flags=re.I)
+        if tekrar:
+            sonrasi = sonrasi[:tekrar.start()]
+        cevap = sonrasi.strip()
     else:
         dusunce = ""
         cevap = re.sub(dusunce_etiket, "", raw_text, flags=re.I).strip()
@@ -647,8 +655,20 @@ AI_HORDE_ACIK = os.getenv("AI_HORDE_ACIK", "1") != "0"
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)          # Horde'a giden son mesaj sayısı (bağlam taşmasın)
-AI_HORDE_BEKLEME = max(5, min(45, _env_int("AI_HORDE_MAX_WAIT", 20)))  # saniye
+AI_HORDE_BEKLEME = max(5, min(120, _env_int("AI_HORDE_MAX_WAIT", 20)))  # saniye (en fazla 120)
 AI_HORDE_POLL = 2.0
+try:
+    AI_HORDE_SICAKLIK = float(os.getenv("AI_HORDE_SICAKLIK", "0.55"))   # küçük modellerde düşük sıcaklık = daha az saçmalama
+except ValueError:
+    AI_HORDE_SICAKLIK = 0.55
+AI_HORDE_EN_BASLIK = os.getenv("AI_HORDE_EN_BASLIK", "1") != "0"  # Horde prompt'unun başına kısa İngilizce talimat (İngilizce ağırlıklı modeller için)
+HORDE_EN_BASLIK_METNI = (
+    "[IMPORTANT] You are role-playing a character in a private chat. Reply ONLY in natural, grammatically correct Turkish, never in English. "
+    "Write short, casual messages like on WhatsApp (1-2 short sentences). "
+    "Always use this format: [DÜŞÜNCE] one short sentence of inner thought, then [CEVAP] the actual message. "
+    "Use each tag only once and never write the user's lines."
+)
+AI_HORDE_KALITE_KONTROL = os.getenv("AI_HORDE_KALITE_KONTROL", "1") != "0"  # bozuk çıktıyı Pollinations'a yönlendir
 # Cloudflare, Python'un varsayılan User-Agent'ını (Python-urllib) engelliyor (hata 1010). Kendi User-Agent'ımızı gönderiyoruz.
 AI_HORDE_USER_AGENT = os.getenv("AI_HORDE_USER_AGENT", "Mozilla/5.0 (compatible; LailaTelegramBot/1.0)").strip()
 _horde_hata_sayisi = 0
@@ -688,7 +708,7 @@ def ai_horde_uret_sync(messages: list) -> str:
         "params": {
             "max_length": _env_int("AI_HORDE_MAX_TOKENS", 300),
             "max_context_length": _env_int("AI_HORDE_CONTEXT", 4096),
-            "temperature": LLM_SICAKLIK if LLM_SICAKLIK is not None else 0.7,
+            "temperature": AI_HORDE_SICAKLIK,
             "top_p": 0.9,
             "rep_pen": 1.05,
             "stop_sequence": ["\nKullanıcı:", "\nTalimatlar:", "\nAsistan:"],
@@ -742,16 +762,17 @@ def ai_horde_uret_sync(messages: list) -> str:
 async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = "", puan: float = 0):
     """Önce AI Horde'u dener (açıksa); olmazsa Pollinations'a düşer. (düşünce, cevap) döner."""
     global _horde_hata_sayisi, _horde_devre_disi_bitis
-    sistem = (
+    sistem_temel = (
         KARAKTERLER[karakter_key]["prompt"]
         + "\n\n" + hayat_ozeti(karakter_key)
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
         + "\n\n" + EMOJI_STILI.get(karakter_key, "")
         + "\n\n" + ornek_diyalog(karakter_key)
-        + "\n\n" + TURKCE_KONTROL
     )
-    if ekstra_sistem:
-        sistem += "\n\n" + ekstra_sistem
+    ek = ("\n\n" + ekstra_sistem) if ekstra_sistem else ""
+    sistem = sistem_temel + "\n\n" + TURKCE_KONTROL + ek
+    # Küçük Horde modelleri YANLIŞ örnekleri taklit edebiliyor, o yüzden onlara bu liste gönderilmez.
+    sistem_horde = (HORDE_EN_BASLIK_METNI + "\n\n" if AI_HORDE_EN_BASLIK else "") + sistem_temel + ek
 
     messages = [{"role": "system", "content": sistem}]
     messages.extend(hafiza[-HAFIZA_LIMITI:])
@@ -761,9 +782,18 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
 
     # 1) AI Horde. Üst üste iki kez başarısız olursa 15 dakika denenmez (her mesaja bekleme eklemesin).
     if AI_HORDE_ACIK and time.time() >= _horde_devre_disi_bitis:
-        horde_mesajlari = [messages[0]] + messages[1:-1][-AI_HORDE_GECMIS:] + [messages[-1]]
+        horde_mesajlari = (
+            [{"role": "system", "content": sistem_horde}]
+            + messages[1:-1][-AI_HORDE_GECMIS:]
+            + [messages[-1]]
+        )
         try:
             ham_metin = await asyncio.to_thread(ai_horde_uret_sync, horde_mesajlari)
+            if AI_HORDE_KALITE_KONTROL and (
+                len(re.findall(r"\[\s*cevap\s*\]", ham_metin, flags=re.I)) > 1
+                or len(re.findall(r"\[\s*d[üu]şünce\s*\]", ham_metin, flags=re.I)) > 1
+            ):
+                raise RuntimeError("Horde çıktısı bozuk (tekrarlanan etiketler)")
             _horde_hata_sayisi = 0
             logging.info("LLM yanıtı AI Horde üzerinden alındı.")
         except Exception as e:
