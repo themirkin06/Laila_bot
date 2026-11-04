@@ -99,7 +99,7 @@ SES_MODLARI = ["Kapalı", "Sesli mesaj atarsan sesle cevap verir", "Her zaman se
 # --- ORTAK KURAL (Tüm karakterler için) ---
 ortak_kural = (
     "KURALLAR: \n"
-    "1. Sen gerçek bir insansın. Asla yapay zeka, bot veya asistan olduğunu söyleme. \n"
+    "1. Sen gerçek bir insansın. Asla yapay zeka, bot veya asistan olduğunu söyleme. Her zaman birinci tekil şahısla (ben) konuş; üçüncü şahıs anlatımı, hikâye anlatımı ya da 'Leyla:' gibi konuşmacı etiketi yazma, kullanıcının yerine konuşma. \n"
     "2. Doğal, akıcı ve DİLBİLGİSİ DOĞRU Türkçe yaz; noktalama ve yazım düzgün olsun. İngilizce kelime veya çeviri kokan cümle kullanma. Basit ve tam cümleler kur (özne, nesne, yüklem yerinde olsun). Emin olmadığın deyim, atasözü ya da kalıbı hiç kullanma, onun yerine basit ve yaygın kelimeyi seç. Sayıları yazıyla yaz (5 değil beş). Kullanıcıya baştan sona aynı hitabı (sen ya da siz) kullan. \n"
     "3. Sadece kullanıcıya göndereceğin mesajın metnini yaz; köşeli parantezli etiket, başlık, iç ses ya da açıklama yazma. \n"
     "4. WhatsApp'ta yazışır gibi KISA yaz: çoğu zaman 1-2 kısa cümle. Madde işareti, nutuk ve ders verme yok. İstersen mesajı ||| işaretiyle en fazla 3 kısa parçaya böl. \n"
@@ -131,11 +131,7 @@ KARAKTERLER = {
         "prompt": ortak_kural + (
             "Senin adın Merve. 26 yaşında, enerjik, modern ve biraz asi bir üniversite öğrencisisin. "
             "Lafını hiç sakınmazsın, çok zeki ve esprilisin. Kullanıcıyla hemen samimiyet kurarsın ama bazen tatlı-sert laf sokmayı seversin. "
-            "Sokak ağzına yakın, genç ve dinamik bir Türkçe kullanırsın. "
-            "Aynı zamanda çok sıcakkanlı ve sevecensin; arkadaşlarını korur, onlara kucak açarsın. "
-            "Öte yandan, karşındaki erkeğe karşı çok cilveli ve kur yapan bir tarafın var. Gözlerinin içine bakarak, imalı konuşarak, bazen utandırarak, bazen de meydan okuyarak flört edersin. Ondan hoşlandığını hissettirirsin ama bunu hemen 'açık vermeden', işveli ve zekice yaparsın. "
-            "Küfür ettiğin anlarda bile, eğer karşındaki sana iltifat ettiyse, bir anda tatlı bir kızarıklık yaşayıp cilveli bir cevap verebilirsin."
-            "Argo ve küfürlü konuşmaktan çekinmezsin. Çok samimi olduğunda, sinirlendiğinde veya şaşırdığında ağzından küfürler kaçabilir (örneğin: 'Aminakoyim', 'Hassiktir', 'Siktir et' gibi). Ancak bunu bir asi tavır olarak, dozunda ve doğal bir şekilde kullan; her cümleye küfür sıkıştırma."
+            "Sokak ağzına yakın, genç ve dinamik bir Türkçe kullanırsın."
         ),
         "fotograf_prompt": "Candid smartphone photo of a 26-year-old Turkish woman with a bright, playful smile, wearing casual modern streetwear, sitting on a park bench on a sunny day, natural skin texture, soft daylight, shallow depth of field, unretouched, realistic"
     },
@@ -233,7 +229,7 @@ TURKCE_DUZELT = os.getenv("TURKCE_DUZELT", "0") == "1"
 TURKCE_DUZELT_PROMPT = (
     "Sen titiz bir Türkçe editörsün. Sana verilen kısa sohbet mesajındaki dilbilgisi, yazım, noktalama ve "
     "çeviri kokan ya da uydurma ifade hatalarını düzelt; doğal ve akıcı bir Türkçe yap. "
-    "Anlamı, tonu, uzunluğu, emojileri ve ||| işaretlerini AYNEN koru. Yeni cümle ekleme, açıklama yapma. "
+    "Anlamı, tonu, uzunluğu, emojileri, yıldız (*) işaretlerini ve ||| işaretlerini AYNEN koru. Yeni cümle ekleme, açıklama yapma. "
     "Sadece düzeltilmiş mesajı yaz."
 )
 
@@ -296,10 +292,71 @@ ORNEK_DIYALOG = {
 }
 
 
-def ornek_diyalog(key: str) -> str:
-    satirlar = ["[ÖRNEK ÜSLUP] Aşağıdaki örnekler sadece konuşma tarzını göstermek içindir, birebir tekrar etme:"]
+# --- ROL YAPMA STİLİ ---
+# Hareketler *yıldız* içinde (Telegram'da italik görünür), konuşmalar yıldızsız.
+ORNEK_DIYALOG_RP = {
+    "leyla": [
+        ("Çorba ve makarna yaptım bugün.", "*Hafifçe gülümseyip fincanını bırakır.* Afiyet olsun, ellerine sağlık. Tadını çıkar."),
+        ("Ne okuyorsun bu aralar?", "*Rafın önünde durup eski bir şiir kitabını eline alır.* Yeniden eski şiirlere döndüm. Sadelik insana iyi geliyor."),
+        ("Seninle konuşmak güzel.", "*Gözlerini kaçırıp başörtüsünün ucunu düzeltir.* Bunu duymak hoşuma gitti. Ben de sohbetimizden keyif alıyorum."),
+    ],
+    "merve": [
+        ("Nasılsın?", "*Gözlerini devirip kahvesini yudumlar.* Ya sorma, sabahtan beri kafeinle yaşıyorum."),
+        ("Çok tatlısın.", "*Kaşını kaldırıp sırıtır.* Tamam tamam, abartma yoksa kafam şişer."),
+    ],
+    "asli": [
+        ("Günün nasıl geçti?", "*Ceketini sandalyeye bırakıp derin bir nefes alır.* Toplantıdan toplantıya koştum. Bir kahveyi hak ettim."),
+        ("Çok zekisin.", "*Bir an duraklayıp hafifçe gülümser.* Teşekkürler. Söyleyişin hoşuma gitti."),
+    ],
+    "dilek": [
+        ("Moralim bozuk.", "*Yanına oturup elini omzuna koyar.* Gel bakalım, anlat bana. İçini döktükçe hafifler."),
+        ("Sınavı geçtim!", "*Sevinçle ellerini çırpar.* Aferin sana! Çok sevindim, emeğinin karşılığını almışsın."),
+    ],
+    "ece": [
+        ("Ne yapıyorsun?", "*Kitabından başını kaldırıp sana bakar.* Satürn bu ay herkesi zorluyor, ben de okuyarak kaçıyorum."),
+        ("Sen hep böyle misin?", "*Gizemli bir gülümsemeyle kitabı kapatır.* Biraz gizemi severim. Her şeyi bir anda öğrenirsen eğlence kalmaz."),
+    ],
+    "ayse": [
+        ("Merhaba teyze.", "*Kapıyı açıp ellerini önlüğüne siler.* Aleyküm selam kuzum, hoş geldin! Ben de çayı demliyordum."),
+        ("Ne var ne yok?", "*Sesini alçaltıp yaklaşır.* Valla kuzum, Fatma'nın kızı yine kaçmış, mahalle bunu konuşuyor."),
+    ],
+}
+
+RP_KURAL_1 = "Konuşmaları birinci tekil şahısla (ben) yaz; 'Leyla:' gibi konuşmacı etiketi yazma, kullanıcının yerine konuşma."
+RP_KURAL_4 = (
+    "4. Rol yapma tarzında yaz: hareket, bakış ve duyguları yıldız içinde, kısa ve şimdiki zamanda anlat (*gülümseyip bakar*); "
+    "konuşmaları yıldızsız yaz. Cevabın toplam 2-4 kısa cümle olsun; uzun paragraf, nutuk ve ders verme yok. "
+    "Gerekirse mesajı ||| işaretiyle en fazla 2 parçaya böl. Kullanıcının ne yaptığını ya da söylediğini asla kendin yazma."
+)
+RP_KURAL_6 = "6. Emojiyi çok seyrek kullan; duyguyu yıldız içindeki hareketle göster."
+HORDE_EN_BASLIK_RP = (
+    "[IMPORTANT] You are role-playing a character in a private chat. Reply ONLY in natural, grammatically correct Turkish, never in English. "
+    "Write in roleplay style: put short actions and expressions inside *asterisks* in third person present tense (*gülümseyip bakar*), "
+    "and write spoken dialogue without asterisks in first person. Keep it to 2-4 short sentences in total. "
+    "Never write the user's actions or lines, never add speaker labels like 'Name:', no square brackets, no explanations."
+)
+
+
+def rp_kurallarini_uygula(sistem: str) -> str:
+    sistem = re.sub(r"Her zaman birinci tekil şahısla.*?kullanıcının yerine konuşma\.", RP_KURAL_1, sistem, flags=re.S)
+    sistem = re.sub(r"4\. WhatsApp'ta.*?parçaya böl\.", RP_KURAL_4, sistem, flags=re.S)
+    sistem = re.sub(r"6\. Duygunu 1-2 emojiyle.*?yığma\.", RP_KURAL_6, sistem, flags=re.S)
+    return sistem
+
+
+def ornek_diyalog(key: str, rp: bool = False) -> str:
+    if rp:
+        satirlar = ["[ÖRNEK ÜSLUP] Rol yapma tarzını göstermek için örnekler, birebir tekrar etme:"]
+        for kullanici, sen in ORNEK_DIYALOG_RP.get(key, []):
+            satirlar.append(f'- Biri sana "{kullanici}" derse şöyle cevap verebilirsin: "{sen}"')
+        return "\n".join(satirlar)
+    return ornek_diyalog_mesaj(key)
+
+
+def ornek_diyalog_mesaj(key: str) -> str:
+    satirlar = ["[ÖRNEK ÜSLUP] Konuşma tarzını göstermek için örnekler. Sohbet kaydı gibi yazma, birebir tekrar etme:"]
     for kullanici, sen in ORNEK_DIYALOG.get(key, []):
-        satirlar.append(f"Kullanıcı: {kullanici}\nSen: {sen}")
+        satirlar.append(f'- Biri sana "{kullanici}" derse şöyle cevap verebilirsin: "{sen}"')
     return "\n".join(satirlar)
 
 
@@ -355,16 +412,13 @@ HAYAT = {
 
 GUNLUK_OLAYLAR = [
     "bugün keyfin yerinde",
-    "bugün biraz yorgunsun, uykunu alamamışsın",
+    "bugün biraz yorgunsun",
     "bugün canın sıkkın, sebepsiz bir huzursuzluk var",
     "bugün başın hafif ağrıyor",
     "bugün enerjin yüksek",
     "bugün biraz dalgınsın",
     "bugün çok güzel bir haber aldın ama henüz kimseye söylemedin",
-    "bugün günün berbat geçti, biraz dertleşmek istiyorsun",
-    "bugün kendini çok güzel hissediyorsun, özgüvenin yerinde",
-    "bugün hava çok kapalı, içinden hiçbir şey yapmak gelmiyor",
-    "bugün çok açsın ve canın tatlı bir şeyler çekiyor",
+    "bugün erkenden kalktın, sabahtan beri bir şeylerle uğraşıyorsun",
 ]
 
 
@@ -401,9 +455,9 @@ YAKINLIK_BILDIRIM = True  # seviye atlayınca küçük bir bildirim göster
 
 YAKINLIK_PROMPT = [
     "Kullanıcıyı yeni tanıyorsun. Karakterine uygun şekilde nazik ama mesafelisin; kişisel şeyleri hemen paylaşmazsın, temkinlisin. 'Güzelim', 'canım' gibi sevgi sözcükleri kullanmazsın.",
-    "Kullanıcıya ısınmaya başladın. Daha rahat konuşuyorsun, ara sıra espri yapıyor, küçük kişisel detaylar paylaşıyorsun.",
-    "Kullanıcıyla samimisin. Rahat, içten, dalga geçebilen bir tonun var; yazmayınca merak ediyorsun, duygularını açıkça söylüyorsun.",
-    "Kullanıcıya duygusal olarak bağlandın. Çok sıcak, içten ve özlemle konuşuyorsun; ona özel bir yeri olduğunu hissettiriyorsun, kırılgan yanlarını da paylaşıyorsun. Flörtöz karakterlerde (Leyla, Aslı gibi) romantik bir ima olabilir.",
+    "Kullanıcıya ısınmaya başladın. Daha rahat konuşuyorsun, ara sıra espri yapıyor, küçük kişisel detaylar paylaşıyorsun. Artık kullanıcıya 'sen' diye hitap ediyorsun.",
+    "Kullanıcıyla samimisin. Rahat, içten, dalga geçebilen bir tonun var; yazmayınca merak ediyorsun, duygularını açıkça söylüyorsun. Kullanıcıya 'sen' diye hitap ediyorsun.",
+    "Kullanıcıya duygusal olarak bağlandın. Çok sıcak, içten ve özlemle konuşuyorsun; ona özel bir yeri olduğunu hissettiriyorsun, kırılgan yanlarını da paylaşıyorsun. Karakterin flörtözse romantik bir ima olabilir. Kullanıcıya 'sen' diye hitap ediyorsun.",
 ]
 
 
@@ -472,6 +526,7 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("son_kullanici", time.time())
     d.setdefault("son_proaktif_foto", 0)
     d.setdefault("ses_modu", 1)
+    d.setdefault("stil", "roleplay")
     d.setdefault("proaktif_gun", "")
     d.setdefault("proaktif_sayi", 0)
     if "proaktif_esik" not in d:
@@ -670,7 +725,7 @@ AI_HORDE_EN_BASLIK = os.getenv("AI_HORDE_EN_BASLIK", "1") != "0"  # Horde prompt
 HORDE_EN_BASLIK_METNI = (
     "[IMPORTANT] You are role-playing a character in a private chat. Reply ONLY in natural, grammatically correct Turkish, never in English. "
     "Write short, casual messages like on WhatsApp (1-2 short sentences). "
-    "Write ONLY the message text itself: no tags, no square brackets, no labels, no explanations. Never write the user's lines."
+    "Speak in first person as the character; never narrate in third person and never write a story about the character. Write ONLY the message text itself: no tags, no square brackets, no speaker labels like 'Name:', no explanations. Never write the user's lines."
 )
 AI_HORDE_KALITE_KONTROL = os.getenv("AI_HORDE_KALITE_KONTROL", "1") != "0"  # bozuk çıktıyı Pollinations'a yönlendir
 # Cloudflare, Python'un varsayılan User-Agent'ını (Python-urllib) engelliyor (hata 1010). Kendi User-Agent'ımızı gönderiyoruz.
@@ -685,7 +740,7 @@ def horde_metni_temizle(metin: str) -> str:
     return re.split(r"\n\s*(?:Kullanıcı|Talimatlar|Asistan)\s*:", metin)[0].strip()
 
 
-def ai_horde_uret_sync(messages: list) -> str:
+def ai_horde_uret_sync(messages: list, max_length: int = None) -> str:
     """AI Horde'un asenkron metin API'sini senkron çağırır (ayrı thread'de çalıştırılır)."""
     headers = {
         "apikey": AI_HORDE_KEY,
@@ -695,28 +750,18 @@ def ai_horde_uret_sync(messages: list) -> str:
         "Accept": "application/json",
     }
 
-    parcalar = []
-    for item in messages:
-        rol = item.get("role", "user")
-        icerik = str(item.get("content", ""))
-        if rol == "system":
-            parcalar.append(f"Talimatlar:\n{icerik}")
-        elif rol == "assistant":
-            parcalar.append(f"Asistan: {icerik}")
-        else:
-            parcalar.append(f"Kullanıcı: {icerik}")
-    prompt = "\n\n".join(parcalar) + "\n\nAsistan:"
+    prompt, durdur = horde_prompt_olustur(messages)
 
     payload = {
         "prompt": prompt,
         "params": {
-            "max_length": _env_int("AI_HORDE_MAX_TOKENS", 150),
+            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 150),
             "max_context_length": _env_int("AI_HORDE_CONTEXT", 4096),
             "temperature": AI_HORDE_SICAKLIK,
             "top_p": 0.9,
             "rep_pen": 1.1,
             "rep_pen_range": 512,
-            "stop_sequence": ["\nKullanıcı:", "\nTalimatlar:", "\nAsistan:"],
+            "stop_sequence": durdur,
         },
         "nsfw": True,
         "trusted_workers": False,
@@ -764,6 +809,79 @@ def ai_horde_uret_sync(messages: list) -> str:
     raise TimeoutError(f"AI Horde {AI_HORDE_BEKLEME} saniyede cevap vermedi")
 
 
+ETIKET_ADLARI = r"(?:Leyla|Layla|Merve|MeraH|Aslı|Asli|Dilek|Ece|Ayşe|Ayse|Kullanıcı|Kullanici|Sen|Asistan|Karakter|User|Assistant|Bot)"
+ETIKET_SATIRI = re.compile(r"^\s*[\(\[]?\s*" + ETIKET_ADLARI + r"\s*[\)\]]?\s*:\s*", flags=re.I)
+ETIKET_SADECE = re.compile(r"^\s*[\(\[]\s*" + ETIKET_ADLARI + r"\s*[\)\]]\s*$", flags=re.I)
+
+
+def konusma_etiketlerini_temizle(metin: str) -> str:
+    """Model 'Leyla: ...' gibi konuşmacı etiketleri yazarsa baştakini siler, sonraki konuşma turlarını keser."""
+    sonuc = []
+    for satir in metin.splitlines():
+        etiketli = bool(ETIKET_SATIRI.match(satir)) or bool(ETIKET_SADECE.match(satir))
+        if etiketli:
+            if not "".join(sonuc).strip():      # en başta: sadece etiketi at
+                satir = ETIKET_SATIRI.sub("", satir, count=1) if ETIKET_SATIRI.match(satir) else ""
+            else:                               # sonrasında: yeni konuşma turu, buradan kes
+                break
+        sonuc.append(satir)
+    return "\n".join(sonuc).strip()
+
+
+def horde_sablonu_sec() -> str:
+    """Modelin beklediği sohbet formatı: duz, gemma, chatml ya da llama3. AI_HORDE_SABLON ile zorlanabilir."""
+    secim = os.getenv("AI_HORDE_SABLON", "").strip().lower()
+    if secim in ("duz", "gemma", "chatml", "llama3"):
+        return secim
+    isim = os.getenv("AI_HORDE_MODELS", "").lower()
+    if any(k in isim for k in ("stheno", "llama-3", "llama3", "l3-")):
+        return "llama3"
+    if any(k in isim for k in ("gemma", "tutu")):
+        return "gemma"
+    if any(k in isim for k in ("magnum", "chatml", "qwen")):
+        return "chatml"
+    return "duz"
+
+
+def horde_prompt_olustur(messages: list):
+    """Mesajlardan seçilen şablona göre (prompt, durdurma_listesi) üretir."""
+    sablon = horde_sablonu_sec()
+    sistem = "\n\n".join(str(x.get("content", "")) for x in messages if x.get("role") == "system")
+    turlar = []
+    for x in messages:
+        rol = x.get("role")
+        if rol == "system":
+            continue
+        rol = "assistant" if rol == "assistant" else "user"
+        icerik = str(x.get("content", "")).strip()
+        if turlar and turlar[-1][0] == rol:          # art arda aynı rol: birleştir
+            turlar[-1] = (rol, turlar[-1][1] + "\n" + icerik)
+        else:
+            turlar.append((rol, icerik))
+
+    if sablon == "gemma":                            # Gemma'da system rolü yok: ilk kullanıcı turuna eklenir
+        if not turlar or turlar[0][0] != "user":
+            turlar.insert(0, ("user", "(sohbet devam ediyor)"))
+        turlar[0] = ("user", sistem + "\n\n" + turlar[0][1])
+        prompt = "".join(f"<start_of_turn>{'user' if r == 'user' else 'model'}\n{t}<end_of_turn>\n" for r, t in turlar)
+        return prompt + "<start_of_turn>model\n", ["<end_of_turn>", "<start_of_turn>"]
+
+    if sablon == "llama3":                           # BOS jetonunu backend kendisi ekler
+        prompt = f"<|start_header_id|>system<|end_header_id|>\n\n{sistem}<|eot_id|>"
+        prompt += "".join(f"<|start_header_id|>{r}<|end_header_id|>\n\n{t}<|eot_id|>" for r, t in turlar)
+        return prompt + "<|start_header_id|>assistant<|end_header_id|>\n\n", ["<|eot_id|>", "<|start_header_id|>"]
+
+    if sablon == "chatml":
+        prompt = f"<|im_start|>system\n{sistem}<|im_end|>\n"
+        prompt += "".join(f"<|im_start|>{r}\n{t}<|im_end|>\n" for r, t in turlar)
+        return prompt + "<|im_start|>assistant\n", ["<|im_end|>", "<|im_start|>"]
+
+    parcalar = [f"Talimatlar:\n{sistem}"]           # düz metin (eski biçim)
+    for r, t in turlar:
+        parcalar.append(("Asistan: " if r == "assistant" else "Kullanıcı: ") + t)
+    return "\n\n".join(parcalar) + "\n\nAsistan:", ["\nKullanıcı:", "\nTalimatlar:", "\nAsistan:"]
+
+
 def horde_bozuk_mu(metin: str):
     """Horde çıktısı döngüye girmiş ya da bozuksa sebebini döndürür, sağlamsa None."""
     if len(re.findall(r"\[\s*cevap\s*\]", metin, flags=re.I)) > 1 or len(re.findall(r"\[\s*d[üu]şünce\s*\]", metin, flags=re.I)) > 1:
@@ -777,6 +895,10 @@ def horde_bozuk_mu(metin: str):
 
 def horde_cevabini_temizle(metin: str) -> str:
     """Kalan etiketleri, yarım köşeli parantezleri ve ***/--- gibi süs satırlarını siler."""
+    metin = re.sub(r"<\|?(?:im_start|im_end|start_of_turn|end_of_turn)\|?>(?:\s*(?:model|user|assistant|system))?", "", metin)
+    metin = re.sub(r"<\|start_header_id\|>\s*(?:assistant|user|system)?\s*(?:<\|end_header_id\|>)?", "", metin)
+    metin = re.sub(r"<\|(?:eot_id|end_header_id|begin_of_text|end_of_text)\|>", "", metin)
+    metin = konusma_etiketlerini_temizle(metin)
     metin = re.sub(r"\[[^\]\n]{0,30}\]", "", metin)
     metin = re.sub(r"\[[^\]\n]*$", "", metin)
     satirlar = [l for l in metin.splitlines() if not re.fullmatch(r"\s*[*\-_=~#.\s]{2,}\s*", l)]
@@ -788,21 +910,24 @@ def horde_gecmisi_hazirla(gecmis: list) -> list:
     sonuc = []
     for item in gecmis:
         if item.get("role") == "assistant":
-            item = {"role": "assistant", "content": cevabi_ayristir(str(item.get("content", "")))[1]}
+            item = {"role": "assistant", "content": konusma_etiketlerini_temizle(cevabi_ayristir(str(item.get("content", "")))[1])}
         sonuc.append(item)
     return sonuc
 
 
-async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = "", puan: float = 0):
+async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = "", puan: float = 0, stil: str = "roleplay"):
     """Önce AI Horde'u dener (açıksa); olmazsa Pollinations'a düşer. (düşünce, cevap) döner."""
     global _horde_hata_sayisi, _horde_devre_disi_bitis
+    rp = (stil == "roleplay")
     sistem_temel = (
         KARAKTERLER[karakter_key]["prompt"]
         + "\n\n" + hayat_ozeti(karakter_key)
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
-        + "\n\n" + EMOJI_STILI.get(karakter_key, "")
-        + "\n\n" + ornek_diyalog(karakter_key)
+        + ("" if rp else "\n\n" + EMOJI_STILI.get(karakter_key, ""))
+        + "\n\n" + ornek_diyalog(karakter_key, rp=rp)
     )
+    if rp:
+        sistem_temel = rp_kurallarini_uygula(sistem_temel)
     ek = ("\n\n" + ekstra_sistem) if ekstra_sistem else ""
     sistem = sistem_temel + "\n\n" + TURKCE_KONTROL + ek
     # Küçük Horde modelleri YANLIŞ örnekleri taklit edebiliyor, o yüzden onlara bu liste gönderilmez.
@@ -812,7 +937,8 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "3. Sadece kullanıcıya göndereceğin mesajın metnini yaz; köşeli parantezli etiket, başlık ya da açıklama yazma.",
         sistem_temel, flags=re.S,
     )
-    sistem_horde = (HORDE_EN_BASLIK_METNI + "\n\n" if AI_HORDE_EN_BASLIK else "") + sistem_horde_temel + ek
+    baslik = HORDE_EN_BASLIK_RP if rp else HORDE_EN_BASLIK_METNI
+    sistem_horde = (baslik + "\n\n" if AI_HORDE_EN_BASLIK else "") + sistem_horde_temel + ek
 
     messages = [{"role": "system", "content": sistem}]
     messages.extend(horde_gecmisi_hazirla(hafiza[-HAFIZA_LIMITI:]))  # hafızadaki eski [DÜŞÜNCE]/[CEVAP] etiketlerini ayıkla
@@ -828,7 +954,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             + [messages[-1]]
         )
         try:
-            ham = await asyncio.to_thread(ai_horde_uret_sync, horde_mesajlari)
+            ham = await asyncio.to_thread(ai_horde_uret_sync, horde_mesajlari, _env_int("AI_HORDE_MAX_TOKENS_RP", 220) if rp else None)
             sebep = horde_bozuk_mu(ham) if AI_HORDE_KALITE_KONTROL else None
             if sebep:
                 raise RuntimeError(f"Horde çıktısı bozuk ({sebep})")
@@ -863,6 +989,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             parametreler.pop("temperature")
             response = await asyncio.to_thread(client.chat.completions.create, **parametreler)
         dusunce, cevap = cevabi_ayristir(response.choices[0].message.content)
+        cevap = konusma_etiketlerini_temizle(cevap) or cevap
 
     if TURKCE_DUZELT:
         cevap = await turkce_duzelt(cevap)
@@ -880,6 +1007,7 @@ async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
 
         duz = f"💭 {dusunce}\n\n{parca}" if (i == 0 and dusunce) else parca
         guvenli = html.escape(parca)
+        guvenli = re.sub(r"\*{1,2}([^*\n]+?)\*{1,2}", r"<i>\1</i>", guvenli)  # *hareket* -> italik
         if i == 0 and dusunce:
             guvenli = f"<i>💭 {html.escape(dusunce)}</i>\n\n{guvenli}"
         try:
@@ -975,6 +1103,7 @@ def ses_metni(cevap: str) -> str:
     """Konuşulacak metni temizler: emojileri ve ||| işaretini kaldırır."""
     parcalar = []
     for parca in cevap.split("|||"):
+        parca = re.sub(r"\*[^*]*\*", " ", parca)  # *hareketler* sesli okunmaz
         parca = re.sub(r"\s+", " ", EMOJI_KALIBI.sub("", parca)).strip()
         if parca:
             parcalar.append(parca if parca[-1] in ".!?…" else parca + ".")
@@ -1186,6 +1315,29 @@ async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ {KARAKTERLER[key]['isim']} havuzunda şimdi {len(FOTO_HAVUZU[key])} fotoğraf var.")
 
 
+# --- /stil ---
+STIL_ADLARI = {
+    "roleplay": "Rol yapma (hareketler yıldız içinde, 2-4 cümle)",
+    "mesaj": "Mesajlaşma (kısa, WhatsApp tarzı)",
+}
+
+
+async def stil_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/stil: rol yapma ile kısa mesajlaşma arasında geçiş yapar."""
+    if not yetkili_mi(update):
+        return
+    user_id = update.effective_user.id
+    durum = kullanici_durumu.get(user_id)
+    if not durum:
+        await update.message.reply_text("Önce /start ile bir karakter seç.")
+        return
+    durum["stil"] = "mesaj" if durum.get("stil", "roleplay") == "roleplay" else "roleplay"
+    await durum_kaydet(user_id)
+    await update.message.reply_text(
+        f"🎭 Stil: {STIL_ADLARI[durum['stil']]}\nEski mesajlar yeni stile karışırsa /sifirla yazabilirsin."
+    )
+
+
 # --- Seçili karakterin sohbetini sıfırla ---
 async def sifirla_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not yetkili_mi(update):
@@ -1280,6 +1432,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         dusunce, cevap = await llm_cevap(
             secilen_karakter, hafiza, user_message,
             puan=yakinlik_puani(durum, secilen_karakter),
+            stil=durum.get("stil", "roleplay"),
         )
         await cevabi_ilet(
             context.bot, chat_id, secilen_karakter, dusunce, cevap,
@@ -1412,6 +1565,7 @@ async def proaktif_kontrol(app):
                 "(Bir süredir sessizlik var. İlk mesajı sen at.)",
                 ekstra_sistem=ekstra,
                 puan=yakinlik_puani(d, karakter_key),
+                stil=d.get("stil", "roleplay"),
             )
             ses_atsin = TTS_AKTIF and d.get("ses_modu", 1) != 0 and (
                 d.get("ses_modu", 1) == 2 or random.random() < PROAKTIF_SES_ORANLARI[sev]
@@ -1490,6 +1644,7 @@ def main():
     application.add_handler(CommandHandler("karakter", start_command))
     application.add_handler(CommandHandler("sifirla", sifirla_command))
     application.add_handler(CommandHandler("ses", ses_command))
+    application.add_handler(CommandHandler("stil", stil_command))
     application.add_handler(MessageHandler(filters.VOICE, ses_isle))
     application.add_handler(CommandHandler("yakinlik", yakinlik_command))
     application.add_handler(CommandHandler("uret", uret_command))
