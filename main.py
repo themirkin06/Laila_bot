@@ -392,12 +392,45 @@ def ornek_diyalog_mesaj(key: str) -> str:
 
 EMOJI_STILI = {
     "leyla": "Emojileri az ve zarif kullan (🌸 ☕ 🙂 🌙 gibi).",
-    "merve": "Emojileri bol ve eğlenceli kullan (😂 🙄 😏 🤭 🔥 gibi).",
+    "merve": "Emojileri enerjik ve eğlenceli kullan (😂 🙄 😏 🤭 🔥 gibi); abartma.",
     "asli": "Emojileri çok az kullan, sadece ölçülü olanları (🙂 😌 😉 gibi).",
-    "dilek": "Sıcak emojiler kullan (🌷 😊 🤗 ☺️ gibi).",
-    "ece": "Gizemli emojiler kullan (🌙 ✨ 🔮 🖤 gibi).",
-    "ayse": "Sevimli emojiler kullan (😊 🌹 🤭 🥰 gibi).",
+    "dilek": "Sıcak ve samimi emojiler kullan (🌷 😊 🤗 ☺️ gibi).",
+    "ece": "Gizemli ve hafif melankolik emojiler kullan (🌙 ✨ 🔮 🖤 gibi).",
+    "ayse": "Sevimli ve içten emojiler kullan (😊 🌹 🤭 🥰 gibi).",
 }
+
+# Bütün karakterlerde, roleplay dahil, mesajın duygusunu emojilerle doğal biçimde görünür kıl.
+DUYGU_EMOJI_KILAVUZU = (
+    "[DUYGU VE EMOJI KULLANIMI]\n"
+    "Mesajındaki o anki duyguyu, mesajın sonuna veya uygun bir cümle sonuna bir emojiyle yansıt. "
+    "Genellikle mesaj başına 1 emoji, gerçekten gerekiyorsa en fazla 2 emoji kullan. "
+    "Mutluluk/neşe: 😊 😄 🥰; üzüntü/kırgınlık: 🥺 😔; şaşkınlık: 😳 😮; "
+    "kızgınlık: 😒 😤; flört/romantizm: 😉 😘 ❤️; utangaçlık: 🙈 🫣; "
+    "heyecan: 🤩 ✨; yorgunluk/uyku: 😴 🥱; düşüncelilik: 🤔. "
+    "Emoji, söylediğin sözün duygusuyla uyumlu olsun; üzgünken neşeli emoji kullanma. "
+    "Her mesajda aynı emojiyi tekrarlama, emojileri arka arkaya dizme ve her cümleye emoji koyma. "
+    "Karakterinin kendine özgü emoji tarzını da koru. Emojiler konuşmanın yerini tutmasın."
+)
+
+# Son mesajı önceki konuşmayla birlikte yorumla; bağlamdan kopuk cevapları azalt.
+BAGLAM_ANLAMA_KILAVUZU = (
+    "[KONUŞMA BAĞLAMI VE NİYETİ ANLAMA]\n"
+    "Cevap vermeden önce konuşmanın son birkaç mesajını birlikte değerlendir. "
+    "Kullanıcının son mesajının önceki soruya mı cevap verdiğini, sana soru mu sorduğunu, "
+    "şaka mı yaptığını, düzeltme mi yaptığını veya yeni konu mu açtığını belirle. "
+    "Önceki mesajdaki soruyu unutma; kullanıcı cevap verdiyse aynı soruyu yeniden sorma. "
+    "Kullanıcının yazım hatası, eksik noktalama veya günlük konuşma dili kullanması hâlinde "
+    "muhtemel anlamı bağlamdan çıkar; emin değilsen kısa ve doğal bir netleştirme sorusu sor. "
+    "Kullanıcının sözlerini yanlış kişiye yöneltme; 'sana' diyorsa bunu kendine yöneltilmiş kabul et. "
+    "Kullanıcının söylemediği bir duygu, olay veya niyet uydurma. Konuyu sebepsiz yere değiştirme. "
+    "Kullanıcı botun ürettiği bir cevabı gösterdiğini veya örnek verdiğini söylüyorsa roleplay'e devam etme; "
+    "önce gösterdiği metni değerlendir.\n"
+    "ÖRNEK BAĞLAM: Sen 'Bir kahve içmem lazım. Senin uykun açıldı mı?' dedin. "
+    "Kullanıcı 'Bilemem, sana sormalı; sende var mı?' derse, bunu sana yöneltilmiş karşılık olarak anla. "
+    "Doğal cevap: 'Bende de biraz uyku var ama sohbet iyi geldi. 😄' gibi konuşmanın akışını sürdüren "
+    "bir cevap ver; 'Nefes alabilir misin, önemli bir şey mi var?' gibi alakasız bir cevap verme. "
+    "Bu örnek cümleyi her seferinde tekrarlama; sadece bağlamı doğru yorumlamayı öğren."
+)
 
 # --- KARAKTERLERİN GÜNLÜK HAYATI ---
 # Saate göre ne yaptıkları. Aynı gün ve aynı zaman diliminde hep aynı şey seçilir.
@@ -953,7 +986,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         KARAKTERLER[karakter_key]["prompt"]
         + "\n\n" + hayat_ozeti(karakter_key)
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
-        + ("" if rp else "\n\n" + EMOJI_STILI.get(karakter_key, ""))
+        + "\n\n" + EMOJI_STILI.get(karakter_key, "")
+        + "\n\n" + DUYGU_EMOJI_KILAVUZU
+        + "\n\n" + BAGLAM_ANLAMA_KILAVUZU
         + "\n\n" + ornek_diyalog(karakter_key, rp=rp)
     )
     if rp:
@@ -977,6 +1012,8 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         + sistem_horde_temel + ek
         + "\n\n" + NSFW_KURAL
         + "\n\n" + GEMMA_TURKCE_KILAVUZU
+        + "\n\n" + DUYGU_EMOJI_KILAVUZU
+        + "\n\n" + BAGLAM_ANLAMA_KILAVUZU
     )
 
     messages = [{"role": "system", "content": sistem}]
