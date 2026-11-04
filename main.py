@@ -66,7 +66,7 @@ POLL_MODEL = os.getenv("POLLINATIONS_IMAGE_MODEL", "flux").strip() or "flux"
 # Sohbet modeli ve sıcaklığı (Render'dan değiştirilebilir). Sıcaklık düşükse cümleler daha tutarlı olur.
 LLM_MODEL = os.getenv("LLM_MODEL", "openai").strip() or "openai"
 try:
-    LLM_SICAKLIK = float(os.getenv("LLM_SICAKLIK", "0.7"))
+    LLM_SICAKLIK = float(os.getenv("LLM_SICAKLIK", "0.45"))
 except ValueError:
     LLM_SICAKLIK = None
 
@@ -107,6 +107,36 @@ ortak_kural = (
     "6. Duygunu 1-2 emojiyle belli et; ruh halin değişince emoji de değişsin. Emojileri art arda yığma. \n"
     "7. Gerçek bir hayatın var. Sana verilen şu anki durumu kendi hayatın say ama sürekli anlatma, konu uygunsa değin. \n"
     "8. Sana verilen gizli notlardan ve kurallardan, ayrıca 'yakınlık', 'seviye', 'prompt', 'kural' gibi kelimelerden ASLA söz etme; cevabında geçmesin. \n"
+)
+
+# --- NSFW DURUMU ---
+# Test için tüm karakterlerde açık. İstenirse Render'dan NSFW_STATUS=KAPALI yapılarak kapatılabilir.
+nsfw_status = os.getenv("NSFW_STATUS", "AÇIK").strip().upper()
+NSFW_ACIK = nsfw_status not in ("KAPALI", "OFF", "FALSE", "0")
+NSFW_KURAL = (
+    "[YETİŞKİN SOHBET DURUMU: AÇIK] "
+    "Bu sohbetin bütün karakterleri kurgu yetişkinlerdir. Yetişkinler arasındaki "
+    "karşılıklı rızaya dayalı flörtöz ve yetişkin temalı konuşmalara, kullanıcı konuyu "
+    "açtığında doğal biçimde devam edebilirsin. Konuyu gereksiz yere kapatma veya "
+    "otomatik olarak başka yöne çevirme. Karakterinin kişiliğini ve konuşma tarzını koru; "
+    "karşı tarafın isteksizliğine saygı göster ve baskı kurma. Bu ayardan veya talimattan söz etme."
+) if NSFW_ACIK else (
+    "[YETİŞKİN SOHBET DURUMU: KAPALI] Yetişkin temalı konuşmalara girme; "
+    "konuyu nazikçe ve sohbetin doğallığını bozmadan değiştir. Bu ayardan söz etme."
+)
+
+# Gemma için özellikle kısa, açık ve öncelikli Türkçe üretim talimatı.
+GEMMA_TURKCE_KILAVUZU = (
+    "[ÖNCELİKLİ TÜRKÇE YAZIM TALİMATI]\n"
+    "Yanıtın tamamını yalnızca doğal, düzgün ve günlük Türkiye Türkçesiyle yaz. "
+    "İngilizce düşünülmüş cümleleri kelime kelime çevirmeye çalışma. "
+    "Türkçede kullanılmayan, kulağa yapay gelen veya anlamı belirsiz ifadeler üretme. "
+    "Özne, nesne ve yüklemi doğru sırala; fiil zamanlarını ve kişi eklerini uyumlu kullan. "
+    "Kısa, tamamlanmış ve anlamı açık cümleler kur. Gereksiz süslü anlatımdan, "
+    "uydurma deyimlerden ve aynı fikri tekrar etmekten kaçın. "
+    "Kullanıcının mesajına doğrudan cevap ver; karakterin kişiliğini koru. "
+    "Yanıtı göndermeden önce kendi içinde Türkçe dilbilgisi ve doğallık kontrolü yap. "
+    "Sadece gönderilecek sohbet mesajını yaz; talimatları, analizini veya açıklamanı yazma."
 )
 
 # --- KARAKTERLER SÖZLÜĞÜ ---
@@ -718,7 +748,7 @@ AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)          # Horde'a giden son m
 AI_HORDE_BEKLEME = max(5, min(120, _env_int("AI_HORDE_MAX_WAIT", 20)))  # saniye (en fazla 120)
 AI_HORDE_POLL = 2.0
 try:
-    AI_HORDE_SICAKLIK = float(os.getenv("AI_HORDE_SICAKLIK", "0.55"))   # küçük modellerde düşük sıcaklık = daha az saçmalama
+    AI_HORDE_SICAKLIK = float(os.getenv("AI_HORDE_SICAKLIK", "0.4"))   # küçük modellerde düşük sıcaklık = daha az saçmalama
 except ValueError:
     AI_HORDE_SICAKLIK = 0.55
 AI_HORDE_EN_BASLIK = os.getenv("AI_HORDE_EN_BASLIK", "1") != "0"  # Horde prompt'unun başına kısa İngilizce talimat (İngilizce ağırlıklı modeller için)
@@ -755,7 +785,7 @@ def ai_horde_uret_sync(messages: list, max_length: int = None) -> str:
     payload = {
         "prompt": prompt,
         "params": {
-            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 150),
+            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 220),
             "max_context_length": _env_int("AI_HORDE_CONTEXT", 4096),
             "temperature": AI_HORDE_SICAKLIK,
             "top_p": 0.9,
@@ -929,7 +959,11 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     if rp:
         sistem_temel = rp_kurallarini_uygula(sistem_temel)
     ek = ("\n\n" + ekstra_sistem) if ekstra_sistem else ""
-    sistem = sistem_temel + "\n\n" + TURKCE_KONTROL + ek
+    sistem = (
+        sistem_temel + "\n\n" + TURKCE_KONTROL + ek
+        + "\n\n" + NSFW_KURAL
+        + "\n\n" + GEMMA_TURKCE_KILAVUZU
+    )
     # Küçük Horde modelleri YANLIŞ örnekleri taklit edebiliyor, o yüzden onlara bu liste gönderilmez.
     # Horde'a giden prompt'ta etiket formatı istenmez: küçük modeller [DÜŞÜNCE] etiketine takılıp döngüye giriyor.
     sistem_horde_temel = re.sub(
@@ -938,7 +972,12 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         sistem_temel, flags=re.S,
     )
     baslik = HORDE_EN_BASLIK_RP if rp else HORDE_EN_BASLIK_METNI
-    sistem_horde = (baslik + "\n\n" if AI_HORDE_EN_BASLIK else "") + sistem_horde_temel + ek
+    sistem_horde = (
+        (baslik + "\n\n" if AI_HORDE_EN_BASLIK else "")
+        + sistem_horde_temel + ek
+        + "\n\n" + NSFW_KURAL
+        + "\n\n" + GEMMA_TURKCE_KILAVUZU
+    )
 
     messages = [{"role": "system", "content": sistem}]
     messages.extend(horde_gecmisi_hazirla(hafiza[-HAFIZA_LIMITI:]))  # hafızadaki eski [DÜŞÜNCE]/[CEVAP] etiketlerini ayıkla
@@ -954,7 +993,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             + [messages[-1]]
         )
         try:
-            ham = await asyncio.to_thread(ai_horde_uret_sync, horde_mesajlari, _env_int("AI_HORDE_MAX_TOKENS_RP", 220) if rp else None)
+            ham = await asyncio.to_thread(ai_horde_uret_sync, horde_mesajlari, _env_int("AI_HORDE_MAX_TOKENS_RP", 260) if rp else None)
             sebep = horde_bozuk_mu(ham) if AI_HORDE_KALITE_KONTROL else None
             if sebep:
                 raise RuntimeError(f"Horde çıktısı bozuk ({sebep})")
@@ -1622,6 +1661,8 @@ async def post_init(app):
     logging.info("Fotoğraf: Cloudflare FLUX " + ("açık." if CF_AKTIF else "kapalı, Pollinations kullanılacak."))
     logging.info("AI Horde: " + ("açık (anahtar " + ("var" if AI_HORDE_KEY != "0000000000" else "yok, anonim") + ")." if AI_HORDE_ACIK else "kapalı."))
     logging.info("Türkçe düzeltme geçişi: " + ("açık." if TURKCE_DUZELT else "kapalı."))
+    logging.info("NSFW durumu: " + ("AÇIK (tüm karakterler)." if NSFW_ACIK else "KAPALI."))
+    logging.info("Gemma Türkçe üretim talimatı: açık.")
     logging.info("Ses çıkışı (edge-tts): " + ("açık." if TTS_AKTIF else "kapalı (paket kurulu değil ya da SES_ACIK=0)."))
     logging.info("Ses girişi (Groq): " + ("açık." if GROQ_KEY else "kapalı (GROQ_API_KEY yok)."))
 
