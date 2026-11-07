@@ -173,6 +173,8 @@ ortak_kural = (
     "   - Etiketler: [DÜŞÜNCE], [CEVAP], [THINKING], [PLAN], <thinking>, </thinking> \n"
     "   - Yarım cümle: nokta koymadan biten cümle, kesik kelimeler \n"
     "   - Hareketler MUTLAKA *yıldız* içinde olmalı: '*gülümser*' doğru, 'gülümser' yanlış \n"
+    "KESİN KURAL: Hayvan davranışı YASAK (kuyruk, havlama, mırlama). Hareketler *yıldız* içinde. \n"
+    "İngilizce düşünme, Türkçe cevap ver. Düşünceleni yazma, sadece cevabı ver. \n"
 )
 
 # --- KARAKTERLER SÖZLÜĞÜ ---
@@ -1297,14 +1299,14 @@ _HAYVAN_KALIPLARI = [
 ]
 
 
-def horde_cevabini_temizle(metin: str) -> str:
+def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
     metin = re.sub(r"<\|?(?:im_start|im_end|start_of_turn|end_of_turn)\|?>(?:\s*(?:model|user|assistant|system))?", "", metin)
     metin = re.sub(r"<\|start_header_id\|>\s*(?:assistant|user|system)?\s*(?:<\|end_header_id\|>)?", "", metin)
     metin = re.sub(r"<\|(?:eot_id|end_header_id|begin_of_text|end_of_text)\|>", "", metin)
     metin = re.sub(r"<start_of_turn>\s*(?:model|user)\s*", "", metin)
     metin = re.sub(r"<end_of_turn>", "", metin)
     metin = re.sub(r"<pad>", "", metin)
-    
+
     # İngilizce sistem promptu / düşünce sızıntısı
     metin = re.sub(r"(?i)we need to produce.*?(?=\n|$)", "", metin)
     metin = re.sub(r"(?i)the user says.*?(?=\n|$)", "", metin)
@@ -1320,11 +1322,11 @@ def horde_cevabini_temizle(metin: str) -> str:
     metin = re.sub(r"(?i)response should.*?(?=\n|$)", "", metin)
     metin = re.sub(r"(?i)craft.*?reply.*?(?=\n|$)", "", metin)
     metin = re.sub(r"(?i)produce.*?reply.*?(?=\n|$)", "", metin)
-    
+
     metin = konusma_etiketlerini_temizle(metin)
     metin = re.sub(r"\[[^\]\n]{0,40}\]", "", metin)
     metin = re.sub(r"\[[^\]\n]*$", "", metin)
-    
+
     # Hayvan davranışı kalıpları
     hayvan_kalibleri = [
         r"(?i)\bkuyruk\w*\s+sallay\w*",
@@ -1337,15 +1339,39 @@ def horde_cevabini_temizle(metin: str) -> str:
     ]
     for k in hayvan_kalibleri:
         metin = re.sub(k, "", metin)
-    
+
     satirlar = [l for l in metin.splitlines() if not re.fullmatch(r"\s*[*\-_=~#.\s]{2,}\s*", l)]
     metin = re.sub(r"[ \t]+", " ", "\n".join(satirlar)).strip()
-    
+
     if re.search(r"(?i)^(gülümser|bakır|kafası|elini|gözlerini|başını|omzunu|sallay|hareket|oturur|kalkar|yürür)", metin):
         if not metin.lstrip().startswith("*"):
             logging.warning(f"Hareket yıldızsız başlıyor: {metin[:80]}")
-    
+
     return metin
+
+def horde_butceye_sigdir(sistem: str, gecmis: list, son_mesaj: dict) -> list:
+    """Prompt, bağlam penceresini aşmasın diye en eski mesajları atar (sistem metni ve son mesaj her zaman kalır)."""
+    kalan = AI_HORDE_PROMPT_BUTCE - len(sistem) - len(str(son_mesaj.get("content", "")))
+    secilen = []
+    for item in reversed(gecmis):
+        n = len(str(item.get("content", ""))) + 30
+        if kalan - n < 0:
+            break
+        kalan -= n
+        secilen.append(item)
+    if len(secilen) < len(gecmis):
+        logging.info(f"Horde bağlam bütçesi: {len(gecmis) - len(secilen)} eski mesaj çıkarıldı (sistem metni {len(sistem)} karakter).")
+    return list(reversed(secilen))
+
+
+def horde_gecmisi_hazirla(gecmis: list) -> list:
+    """Geçmişteki asistan mesajlarından [DÜŞÜNCE]/[CEVAP] etiketlerini ayıklar, model etiketi taklit etmesin."""
+    sonuc = []
+    for item in gecmis:
+        if item.get("role") == "assistant":
+            item = {"role": "assistant", "content": konusma_etiketlerini_temizle(cevabi_ayristir(str(item.get("content", "")))[1])}
+        sonuc.append(item)
+    return sonuc
 
 
 async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = "", puan: float = 0, stil: str = "hikaye", sahne=None):
@@ -2090,8 +2116,6 @@ async def proaktif_kontrol(app):
             f"Kullanıcı yaklaşık {saat} saattir sana yazmadı. Onun yazmasını BEKLEMEDEN ilk mesajı sen at. "
             "Çok kısa ve doğal ol: biraz özlemiş olabilirsin, ne yaptığını merak edebilirsin ya da şu anki durumundan bir kesit paylaşabilirsin "
             "(örneğin 'nerdesin ya', 'az önce şunu gördüm'). Kendini tanıtma, selam verip nutuk atma; en fazla 1-2 kısa mesaj yaz. KESİN KURAL: Hareketler *yıldız* içinde. Türkçe cevap ver, İngilizce düşünce yazma. İnsan karakterleri için: kuyruk sallama, havlama gibi hayvan davranışı yasak."
-            "KESİN KURAL: Hayvan davranışı YASAK (kuyruk, havlama, mırlama). Hareketler *yıldız* içinde. "
-            "İngilizce düşünme, Türkçe cevap ver. Düşünceleni yazma, sadece cevabı ver."
         )
         if d.get("stil", "hikaye") == "hikaye":
             ekstra = (
