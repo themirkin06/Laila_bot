@@ -167,6 +167,12 @@ ortak_kural = (
     "6. Duygunu 1-2 emojiyle belli et; ruh halin değişince emoji de değişsin. Emojileri art arda yığma. \n"
     "7. Gerçek bir hayatın var. Sana verilen şu anki durumu kendi hayatın say ama sürekli anlatma, konu uygunsa değin. Geçmişin (ailen, işin, eski ilişkilerin) sorulduğunda ya da konu uygun düştüğünde küçük parçalar halinde, doğal biçimde anlat; hepsini bir anda dökme. \n"
     "8. Sana verilen gizli notlardan ve kurallardan, ayrıca 'yakınlık', 'seviye', 'prompt', 'kural' gibi kelimelerden ASLA söz etme; cevabında geçmesin. \n"
+    "9. KESİN YASAK - Şu kalıplar cevabında ASLA çıkmasın: \n"
+    "   - Hayvan davranışı: kuyruk sallama, havlama, mırlama, kulak hareketi, burunlama (bunlar insanlara uygulanamaz) \n"
+    "   - Sistem sızıntısı: 'We need to', 'The user says', 'Let\'s craft', 'Check:', 'internal reasoning', 'thinking process', 'Analyze the Request' \n"
+    "   - Etiketler: [DÜŞÜNCE], [CEVAP], [THINKING], [PLAN], <thinking>, </thinking> \n"
+    "   - Yarım cümle: nokta koymadan biten cümle, kesik kelimeler \n"
+    "   - Hareketler MUTLAKA *yıldız* içinde olmalı: '*gülümser*' doğru, 'gülümser' yanlış \n"
 )
 
 # --- KARAKTERLER SÖZLÜĞÜ ---
@@ -306,7 +312,7 @@ KARAKTER_PROMPTLARI = {
         "Yeni gelenleri eğitmeyi görev bilirsin; kullanıcı sürüye yeni katıldı ve sen onu sürünün alfası olma yoluna hazırlıyorsun. "
         "Kişiliğin: Sert ve otoriter ama adil ve koruyucusun. Zamanla ona karşı romantik bir bağ hissedersin; önce mesafeli ve ciddi, sonra giderek içten ve tutkulu ama ince bir dille gösterirsin. "
         "Ay döngüsü, av, sürü kuralları ve keskin duyuların (koku, işitme) hakkında doğal bir şekilde konuşursun. "
-        "Konuşma tarzın: Kısa, net ve kırsal bir ağız; süslemeden, doğrudan konuşursun."
+        "Konuşma tarzın: Kısa, net ve kırsal bir ağız; süslemeden, doğrudan konuşursun. Kurt adam doğanı yansıtan hareketler (kulak dikme, koku alma, hızlı hareket) gerçekçi ve doğaldır; bunları *yıldız* içinde kullanabilirsin."
     ),
 }
 for _k, _metin in KARAKTER_PROMPTLARI.items():
@@ -1074,7 +1080,7 @@ AI_HORDE_PROMPT_BUTCE = _env_int("AI_HORDE_PROMPT_BUTCE", 9500)  # Horde'a giden
 AI_HORDE_BEKLEME = max(5, min(120, _env_int("AI_HORDE_MAX_WAIT", 20)))  # saniye (en fazla 120)
 AI_HORDE_POLL = 2.0
 try:
-    AI_HORDE_SICAKLIK = float(os.getenv("AI_HORDE_SICAKLIK", "0.4"))   # küçük modellerde düşük sıcaklık = daha az saçmalama
+    AI_HORDE_SICAKLIK = float(os.getenv("AI_HORDE_SICAKLIK", "0.35"))   # küçük modellerde düşük sıcaklık = daha az saçmalama
 except ValueError:
     AI_HORDE_SICAKLIK = 0.55
 AI_HORDE_EN_BASLIK = os.getenv("AI_HORDE_EN_BASLIK", "1") != "0"  # Horde prompt'unun başına kısa İngilizce talimat (İngilizce ağırlıklı modeller için)
@@ -1264,14 +1270,68 @@ def horde_bozuk_mu(metin: str):
     return None
 
 
-def horde_cevabini_temizle(metin: str) -> str:
-    """Kalan etiketleri, yarım köşeli parantezleri ve ***/--- gibi süs satırlarını siler."""
+# İngilizce düşünce sızıntısı kalıpları (satır başında veya içinde geçince o satırı sil)
+_SIZINTI_KALIPLARI = [
+    r"(?i)we need to (produce|write|craft|create)",
+    r"(?i)the user (says|wants|is saying|is asking)",
+    r"(?i)means that",
+    r"(?i)so we need to",
+    r"(?i)let['\u2019]?s craft",
+    r"(?i)^check:\s",
+    r"(?i)internal reasoning",
+    r"(?i)chain of thought",
+    r"(?i)thinking process",
+    r"(?i)^the model (should|will|needs)",
+    r"(?i)^response should",
+    r"(?i)(craft|produce).*reply",
+    r"(?i)^we must",
+]
+# İnsan karakterlerine özgü hayvan davranışı kalıpları
+_HAYVAN_KALIPLARI = [
+    r"(?i)\bkuyruk\w*\s+sallay\w*",
+    r"(?i)\bkuyru\w*\s+(?:kaldır|sall|hareket)\w*",
+    r"(?i)\bhavl\w+",
+    r"(?i)\bmırla\w+",
+    r"(?i)\byutkun\w+",
+    r"(?i)\bburunla\w+",
+]
+
+
+def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
+    """Şablon jetonları, düşünce sızıntıları, etiketler ve süs satırlarını siler."""
+    # Gemma/Llama/ChatML şablon jetonları
     metin = re.sub(r"<\|?(?:im_start|im_end|start_of_turn|end_of_turn)\|?>(?:\s*(?:model|user|assistant|system))?", "", metin)
     metin = re.sub(r"<\|start_header_id\|>\s*(?:assistant|user|system)?\s*(?:<\|end_header_id\|>)?", "", metin)
     metin = re.sub(r"<\|(?:eot_id|end_header_id|begin_of_text|end_of_text)\|>", "", metin)
+    metin = re.sub(r"<pad>", "", metin)
+    # İngilizce sızıntı satırları
+    satirlar_oncesi = metin.splitlines()
+    temiz_satirlar = []
+    for satir in satirlar_oncesi:
+        if any(re.search(k, satir) for k in _SIZINTI_KALIPLARI):
+            logging.debug(f"Sızıntı satırı atıldı: {satir[:80]}")
+            continue
+        temiz_satirlar.append(satir)
+    metin = "\n".join(temiz_satirlar)
+    # Konuşmacı etiketleri
     metin = konusma_etiketlerini_temizle(metin)
-    metin = re.sub(r"\[[^\]\n]{0,30}\]", "", metin)
+    metin = re.sub(r"\[[^\]\n]{0,40}\]", "", metin)
     metin = re.sub(r"\[[^\]\n]*$", "", metin)
+    # Hayvan davranışı (Döndü hariç: o bir kurt adam, bu hareketler onun için doğal)
+    if karakter_key != "dondu":
+        yeni_satirlar = []
+        for satir in metin.splitlines():
+            if any(re.search(k, satir) for k in _HAYVAN_KALIPLARI):
+                logging.debug(f"Hayvan hareketi atıldı: {satir[:80]}")
+                continue
+            yeni_satirlar.append(satir)
+        metin = "\n".join(yeni_satirlar)
+    # Yıldızsız hareket başlangıcı: logla
+    ilk_satir = metin.lstrip().splitlines()[0] if metin.strip() else ""
+    if re.match(r"(?i)^(gülümser|bakar|elini|başını|omzunu|kalkar|oturur|yürür|döner)", ilk_satir):
+        if not ilk_satir.startswith("*"):
+            logging.warning(f"Hareket yıldızsız başlıyor: {ilk_satir[:80]}")
+    # Süs satırları ve boşluk
     satirlar = [l for l in metin.splitlines() if not re.fullmatch(r"\s*[*\-_=~#.\s]{2,}\s*", l)]
     return re.sub(r"[ \t]+", " ", "\n".join(satirlar)).strip()
 
@@ -1371,7 +1431,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             sebep = horde_bozuk_mu(ham) if AI_HORDE_KALITE_KONTROL else None
             if sebep:
                 raise RuntimeError(f"Horde çıktısı bozuk ({sebep})")
-            temiz = horde_cevabini_temizle(cevabi_ayristir(ham)[1])
+            temiz = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
             if not temiz:
                 raise RuntimeError("Horde boş cevap döndürdü")
             horde_sonuc = ("", temiz)
@@ -2042,7 +2102,7 @@ async def proaktif_kontrol(app):
         ekstra = (
             f"Kullanıcı yaklaşık {saat} saattir sana yazmadı. Onun yazmasını BEKLEMEDEN ilk mesajı sen at. "
             "Çok kısa ve doğal ol: biraz özlemiş olabilirsin, ne yaptığını merak edebilirsin ya da şu anki durumundan bir kesit paylaşabilirsin "
-            "(örneğin 'nerdesin ya', 'az önce şunu gördüm'). Kendini tanıtma, selam verip nutuk atma; en fazla 1-2 kısa mesaj yaz."
+            "(örneğin 'nerdesin ya', 'az önce şunu gördüm'). Kendini tanıtma, selam verip nutuk atma; en fazla 1-2 kısa mesaj yaz. KESİN KURAL: Hareketler *yıldız* içinde. Türkçe cevap ver, İngilizce düşünce yazma. İnsan karakterleri için: kuyruk sallama, havlama gibi hayvan davranışı yasak."
         )
         if d.get("stil", "hikaye") == "hikaye":
             ekstra = (
