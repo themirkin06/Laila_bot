@@ -338,12 +338,12 @@ FOTO_STIL = (
     "natural skin texture, soft natural light, shallow depth of field, unretouched, realistic"
 )
 FOTO_KISI = {
-    "leyla": "a 38-year-old Turkish woman with a smooth, youthful face and natural skin, wearing a modest pastel pink hijab, slightly full figure",
-    "merve": "a 26-year-old Turkish woman with a bright playful smile, wearing casual modern streetwear",
-    "asli": "a 30-year-old Turkish businesswoman with a confident smile, wearing a white blouse and tailored blazer",
-    "dilek": "a 35-year-old Turkish woman teacher with a warm smile and glasses, wearing a beige knit sweater",
-    "ece": "a 22-year-old Turkish woman with a thoughtful, slightly mysterious expression, wearing a dark knit sweater",
-    "ayse": "a 50-year-old Turkish woman laughing warmly, wearing a floral dress and a patterned headscarf",
+    "leyla": "a 38-year-old Turkish woman with a smooth, youthful face, natural skin, warm brown eyes, wearing a pastel pink hijab, slightly full figure",
+    "merve": "a 26-year-old Turkish woman with a bright playful smile, expressive eyes and long chestnut-brown hair",
+    "asli": "a 30-year-old Turkish woman with a confident smile, defined facial features and straight dark hair",
+    "dilek": "a 35-year-old Turkish woman with a warm smile, glasses and shoulder-length dark hair",
+    "ece": "a 22-year-old Turkish woman with a thoughtful, slightly mysterious expression, delicate features and dark wavy hair",
+    "ayse": "a 50-year-old Turkish woman laughing warmly, kind eyes, natural age lines and a patterned headscarf",
 }
 FOTO_SAHNELER = {
     "leyla": ["in a quiet cafe next to a window", "on a balcony with potted flowers", "in a bookshop between shelves", "in a cozy living room at home"],
@@ -355,10 +355,59 @@ FOTO_SAHNELER = {
 }
 
 
-def foto_promptu(karakter: dict) -> str:
+FOTO_YAKINLIK_STILLERI = {
+    0: (
+        "modest everyday outfit, relaxed natural selfie, friendly expression, "
+        "casual and approachable atmosphere"
+    ),
+    1: (
+        "neatly styled everyday outfit with tasteful accessories, warm confident smile, "
+        "slightly more personal and relaxed pose"
+    ),
+    2: (
+        "elegant fashionable outfit with a tasteful neckline, flattering natural pose, "
+        "soft romantic expression, warm cinematic atmosphere"
+    ),
+    3: (
+        "glamorous evening outfit, tasteful bold fashion styling, alluring but non-explicit pose, "
+        "intimate romantic atmosphere with soft cinematic lighting"
+    ),
+}
+
+FOTO_SURPRIZ_ALTYAZILARI = {
+    "dondu": [
+        "Bunu sana atarken biraz utandım, ama görmek istedim 🙈",
+        "Normalde böyle şeyler yapmam. Bugünlük bir istisna olsun",
+        "Nasıl buldun? Fikrini merak ettim",
+    ],
+    "default": [
+        "Bunu seninle paylaşmak istedim 😊",
+        "Bugün kendimi güzel hissettim, sana da göstereyim dedim",
+        "Nasıl olmuşum? 🙈",
+    ],
+}
+
+
+def foto_promptu(karakter: dict, yakinlik: int = 0, surpriz: bool = False) -> str:
+    """Karakterin temel yüz özelliklerini koruyup ilişki seviyesine göre tarzı değiştirir."""
     key = karakter["key"]
     sahne = random.choice(FOTO_SAHNELER[key])
-    return f"{FOTO_STIL}, of {FOTO_KISI[key]}, {sahne}"
+    seviye = max(0, min(3, int(yakinlik)))
+    stil = FOTO_YAKINLIK_STILLERI[seviye]
+    kimlik_tutarliligi = (
+        "same recognizable fictional adult woman in every image, preserve her established "
+        "face shape, eyes, nose, age, skin tone and defining facial features; do not change identity"
+    )
+    fotograf_notu = (
+        "a spontaneous personal photo she chose to share after a meaningful relationship milestone"
+        if surpriz else "a natural candid personal photo"
+    )
+    return (
+        f"{FOTO_STIL}, {fotograf_notu}, {kimlik_tutarliligi}, "
+        f"portrait of {FOTO_KISI[key]}, {stil}, {sahne}, "
+        "realistic anatomy, natural hands if visible, realistic skin texture, "
+        "tasteful non-explicit adult romantic styling"
+    )
 
 
 # Türkçe kalitesi: gerçek hatalardan çıkarılmış yanlış/doğru örnekleri.
@@ -679,7 +728,7 @@ HAYAT = {
 }
 
 # ---- Asena (kurt adam sürüsü) ----
-FOTO_KISI["dondu"] = "a 43-year-old Turkish woman with strong features and amber-colored eyes, long dark wavy hair, wearing a dark wool cardigan"
+FOTO_KISI["dondu"] = "a 43-year-old Turkish woman with strong features, amber-colored eyes and long dark wavy hair"
 FOTO_SAHNELER["dondu"] = ["at the edge of a misty pine forest at dusk", "beside a stone fireplace in a mountain cabin", "on a hilltop under a pale full moon", "walking along a forest path at dawn"]
 EMOJI_STILI["dondu"] = "Emojileri çok az kullan, sadece 🌙 🐺 🔥 gibi."
 HAYAT["dondu"] = {
@@ -895,6 +944,8 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("yakinlik", {})
     d.setdefault("son_kullanici", time.time())
     d.setdefault("son_proaktif_foto", 0)
+    # Her yakınlık seviyesi için en fazla bir otomatik kutlama fotoğrafı gönderilir.
+    d.setdefault("seviye_foto_gonderildi", {})
     d.setdefault("ses_modu", 1)
     d.setdefault("stil", "hikaye")
     d.setdefault("sahneler", {})
@@ -1569,8 +1620,8 @@ def cloudflare_gorsel_sync(prompt: str, seed: int) -> bytes:
     return base64.b64decode(resim)
 
 
-async def foto_uret_bytes(karakter: dict, seed: int) -> bytes:
-    prompt = foto_promptu(karakter)
+async def foto_uret_bytes(karakter: dict, seed: int, yakinlik: int = 0, surpriz: bool = False) -> bytes:
+    prompt = foto_promptu(karakter, yakinlik=yakinlik, surpriz=surpriz)
 
     # 1) Cloudflare FLUX (kuruluysa)
     if CF_AKTIF:
@@ -1604,12 +1655,15 @@ async def foto_uret_bytes(karakter: dict, seed: int) -> bytes:
     raise son_hata
 
 
-async def foto_gonder(bot, chat_id: int, karakter: dict, caption: str = None):
-    """Önce senin seçtiğin havuzdaki fotoğraflardan gönderir, havuz boşsa üretir."""
+async def foto_gonder(
+    bot, chat_id: int, karakter: dict, caption: str = None,
+    yakinlik: int = 0, havuzdan: bool = True, surpriz: bool = False
+):
+    """Havuzdan veya mevcut görsel sağlayıcısından, ilişki seviyesine uygun fotoğraf gönderir."""
     key = karakter["key"]
     await bot.send_chat_action(chat_id=chat_id, action="upload_photo")
 
-    havuz = FOTO_HAVUZU.get(key, [])
+    havuz = FOTO_HAVUZU.get(key, []) if havuzdan and not surpriz else []
     if havuz:
         secenekler = [f for f in havuz if f != son_havuz_foto.get(key)] or havuz
         file_id = random.choice(secenekler)
@@ -1620,7 +1674,7 @@ async def foto_gonder(bot, chat_id: int, karakter: dict, caption: str = None):
         except Exception as e:
             logging.warning(f"Havuz fotoğrafı gönderilemedi, üretilecek: {e}")
 
-    foto_bytes = await foto_uret_bytes(karakter, random.randint(1, 999999))
+    foto_bytes = await foto_uret_bytes(karakter, random.randint(1, 999999), yakinlik=yakinlik, surpriz=surpriz)
     await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
 
 
@@ -2046,6 +2100,31 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
                 text=yakinlik_bildirimi(secilen_karakter, karakter, yeni_sev),
             )
 
+        # Yeni yakınlık seviyesini küçük bir fotoğraf sürpriziyle kutla.
+        # Her karakter, her seviyede bunu yalnızca bir kez yapar.
+        if yeni_sev > eski_sev:
+            gonderilenler = durum.setdefault("seviye_foto_gonderildi", {})
+            onceki_foto_seviyesi = int(gonderilenler.get(secilen_karakter, -1))
+            if yeni_sev > onceki_foto_seviyesi:
+                # Önce işaretle: fotoğraf servisi hata verse bile her mesajda tekrar deneme.
+                gonderilenler[secilen_karakter] = yeni_sev
+                await durum_kaydet(user_id)
+                altyazilar = FOTO_SURPRIZ_ALTYAZILARI.get(
+                    secilen_karakter, FOTO_SURPRIZ_ALTYAZILARI["default"]
+                )
+                try:
+                    await foto_gonder(
+                        context.bot,
+                        chat_id,
+                        karakter,
+                        caption=random.choice(altyazilar),
+                        yakinlik=yeni_sev,
+                        havuzdan=False,
+                        surpriz=True,
+                    )
+                except Exception as surpriz_hatasi:
+                    logging.warning(f"Seviye fotoğraf sürprizi gönderilemedi: {surpriz_hatasi}")
+
         # Hikâye modunda seviye atlayınca sahne de değişir (özel sahne seçmediysen)
         if yeni_sev > eski_sev and durum.get("stil", "hikaye") == "hikaye" and secilen_karakter not in durum["sahneler"]:
             yeni_sahne = f"*{HIKAYE[secilen_karakter]['sahneler'][yeni_sev]}*"
@@ -2061,7 +2140,11 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
     # --- FOTOĞRAF İSTEĞİ ---
     if foto_istegi_mi(user_message):
         try:
-            await foto_gonder(context.bot, chat_id, karakter, caption=(random.choice(FOTO_ALTYAZILARI) if EMOJI_KULLAN else emoji_temizle(random.choice(FOTO_ALTYAZILARI))))
+            await foto_gonder(
+                context.bot, chat_id, karakter,
+                caption=(random.choice(FOTO_ALTYAZILARI) if EMOJI_KULLAN else emoji_temizle(random.choice(FOTO_ALTYAZILARI))),
+                yakinlik=yakinlik_seviyesi(yakinlik_puani(durum, secilen_karakter)),
+            )
         except Exception as img_error:
             logging.error(f"Görsel hatası: {img_error}")
             await update.message.reply_text("Kameramda bir sorun var sanırım, sonra tekrar dener misin?")
@@ -2181,7 +2264,7 @@ async def proaktif_kontrol(app):
             await cevabi_ilet(app.bot, chat_id, karakter_key, dusunce, cevap, sesle=ses_atsin)
             if foto_atsin:
                 try:
-                    await foto_gonder(app.bot, chat_id, karakter)
+                    await foto_gonder(app.bot, chat_id, karakter, yakinlik=sev)
                     d["son_proaktif_foto"] = time.time()
                 except Exception as img_error:
                     logging.error(f"Proaktif görsel hatası: {img_error}")
