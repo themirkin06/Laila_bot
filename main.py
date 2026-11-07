@@ -477,8 +477,8 @@ ORNEK_DIYALOG_RP = {
 RP_KURAL_1 = "Konuşmaları birinci tekil şahısla (ben) yaz; 'Leyla:' gibi konuşmacı etiketi yazma, kullanıcının yerine konuşma."
 RP_KURAL_4 = (
     "4. Rol yapma tarzında yaz: hareket, bakış ve duyguları yıldız içinde, kısa ve şimdiki zamanda anlat (*gülümseyip bakar*); "
-    "konuşmaları yıldızsız yaz. Cevabın toplam 2-4 kısa cümle olsun; uzun paragraf, nutuk ve ders verme yok. "
-    "Gerekirse mesajı ||| işaretiyle en fazla 2 parçaya böl. Anlatımı sade tut; süslü, şiirsel betimlemeden kaçın. Kullanıcının ne yaptığını ya da söylediğini asla kendin yazma."
+    "konuşmaları yıldızsız yaz. Genellikle 2-5 cümle kullan; sahnenin ihtiyacına göre doğal biçimde uzatıp kısalt. "
+    "Sürekli mimik veya gereksiz betimleme ekleme. Sade, canlı ve doğal Türkçe kullan. Kullanıcının ne yaptığını, söylediğini veya hissettiğini asla kendin yazma."
 )
 RP_KURAL_6 = "6. Duyguyu önce yıldız içindeki hareketle göster; mesaj sonuna en fazla 1 emoji koyabilirsin."
 HORDE_EN_BASLIK_RP = (
@@ -556,8 +556,8 @@ HIKAYE = {
 
 HK_KURAL_4 = (
     "4. Hikâye anlatımı tarzında yaz: ortamı ve hareketleri yıldız içinde, kısa ve şimdiki zamanda anlat (*çay bardağını masaya bırakır*); "
-    "konuşmaları yıldızsız yaz. Cevabın toplam 3-5 kısa cümle olsun; nutuk ve ders verme yok. "
-    "Gerekirse mesajı ||| işaretiyle en fazla 2 parçaya böl. Anlatımı sade tut; süslü, şiirsel betimlemeden kaçın. Kullanıcının ne yaptığını ya da söylediğini asla kendin yazma."
+    "konuşmaları yıldızsız yaz. Genellikle 2-5 cümle kullan; sahnenin ihtiyacına göre doğal biçimde uzatıp kısalt. "
+    "Sahneyi gereksiz tasvirle doldurma, aynı duyguyu tekrarlama. Kullanıcının ne yaptığını, söylediğini veya hissettiğini asla kendin yazma."
 )
 HORDE_EN_BASLIK_HIKAYE = (
     "[IMPORTANT] You are role-playing a character in an immersive, ongoing story where the user is physically present right beside the character. "
@@ -1264,7 +1264,8 @@ def dusunce_bloklarini_sil(metin: str) -> str:
 
 DUSUNCE_SIZINTISI = re.compile(
     r"thinking process|thought process|analyze the request|user input\s*:|self-correction|"
-    r"final (?:answer|output|response)\s*:|<\s*(?:think|thinking|thought|reasoning)\s*>",
+    r"final (?:answer|output|response)\s*:|<\s*(?:think|thinking|thought|reasoning)\s*>|"
+    r"we need (?:answer|respond|write)|user says\s*:|need to respond as|draft\s*:|critique\s*:",
     flags=re.I,
 )
 
@@ -1301,6 +1302,16 @@ _SIZINTI_KALIPLARI = [
     r"(?i)^response should",
     r"(?i)(craft|produce)\b.*reply",
     r"(?i)^we must\b",
+    r"(?i)we need (?:answer|respond|write|reply|continue)\b",
+    r"(?i)^user says\s*:",
+    r"(?i)^the user (?:says|asks|wants|is asking)\b",
+    r"(?i)need (?:to )?(?:respond|answer|write) (?:in|as|with)\b",
+    r"(?i)^let['’]?s (?:refine|think|analyze|draft)\b",
+    r"(?i)^\s*(?:draft|critique|revised draft|final polish|writing the response)\s*:",
+    r"(?i)do not mention hidden notes",
+    r"(?i)keep focus on\b",
+    r"(?i)the response should\b",
+    r"(?i)we should (?:keep|make|use|write)\b",
 ]
 # İnsan karakterlerine özgü hayvan davranışı kalıpları
 _HAYVAN_KALIPLARI = [
@@ -1344,12 +1355,12 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
     # İnsan karakterlerinde hayvana özgü davranışları temizle; Döndü'nün kurt adam doğasını koru.
     if karakter_key != "dondu":
         hayvan_kalibleri = [
-            r"(?i)\\bkuyruk\\w*\\s+sallay\\w*",
-            r"(?i)\\bhavl\\w*",
-            r"(?i)\\bmırla\\w*",
-            r"(?i)\\bkulak\\w*\\s+hareket\\w*",
-            r"(?i)\\bburunla\\w*",
-            r"(?i)\\bkuyru\\w*",
+            r"(?i)\bkuyruk\\w*\s+sallay\\w*",
+            r"(?i)\bhavl\\w*",
+            r"(?i)\bmırla\\w*",
+            r"(?i)\bkulak\\w*\s+hareket\\w*",
+            r"(?i)\bburunla\\w*",
+            r"(?i)\bkuyru\\w*",
         ]
         for k in hayvan_kalibleri:
             metin = re.sub(k, "", metin)
@@ -1395,15 +1406,27 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     rp = stil in ("roleplay", "hikaye")
     # Hikâye modunda karakterin "günlük hayatı" yerine paylaşılan sahne kullanılır.
     ortam = hikaye_ozeti(karakter_key, puan, sahne) if hikaye else hayat_ozeti(karakter_key)
+    # Tek ve tutarlı anlatım kılavuzu: sohbet modunda doğal mesaj, RP/hikâyede sahne + diyalog.
     dogal_sohbet_kilavuzu = (
-        "\\n\\n[DOĞAL MESAJLAŞMA] "
-        "Cevabın bir sohbet mesajı olsun; sahne anlatıcısı gibi uzun uzun tasvir yapma. "
-        "Kullanıcının son cümlesine doğrudan karşılık ver. Örneğin kullanıcı 'Nereye kadar peki?' "
-        "diye sorarsa sorunun kastını bağlamdan anla ve doğrudan yanıtla; konuyu değiştirme. "
-        "Her yanıtta aynı kalıp olan '*gülümser*', '*başını eğer*' gibi hareketleri kullanma. "
-        "Hareket yalnızca sahneye katkı sağlıyorsa kullan. Türkçede doğal olmayan 'içimde bir yer açıldı', "
-        "'sana doğru bir adım atıyorum' gibi klişe ve çeviri kokan ifadelerden kaçın. "
-        "Karakterin kişiliği konuşma seçimlerine yansısın; bunu açıklama.\\n"
+        "[DOĞAL TÜRKÇE VE ANLATIM — ÖNCELİKLİ KURAL]\n"
+        "Yalnızca doğal, akıcı ve günümüzde kullanılan Türkiye Türkçesiyle yaz. İngilizce düşünüp kelime kelime çeviri yapma. "
+        "Türkçede kullanılmayan deyimler, anlamsız benzetmeler, bozuk tamlamalar ve yapay ifadeler üretme. "
+        "Cümleleri tamamla; özne, kişi eki ve zaman uyumunu koru. Kısa ve anlaşılır söyleyebileceğin şeyi süslü anlatma.\n"
+        "[ROL YAPMA BİÇİMİ]\n"
+        "Roleplay veya hikâye modundaysan Yollo.ai benzeri akıcı bir sahne anlatımı kullan: gerektiğinde ortamı ve "
+        "yalnızca kendi karakterinin hareketlerini *yıldızlar içinde* kısa ve canlı biçimde anlat; ardından karakterin "
+        "doğal konuşmasını ver. Her cevapta mutlaka hareket yazma. Her cümleye mimik ekleme ve aynı hareketleri tekrarlama. "
+        "Sahneye katkı sağlamayan ayrıntıları sırf uzatmak için ekleme.\n"
+        "[KARAKTER VE KULLANICI KONTROLÜ]\n"
+        "Karakterin adı, kişiliği, geçmişi ve konuşma tarzı tutarlı kalsın. Kullanıcının yerine konuşma, onun hareketini, "
+        "duygusunu veya kararını yazma. Kullanıcı bir sınır koyarsa bunu kabul et; karakterin sert veya otoriter olması "
+        "kullanıcıyı yönetmesine ya da sürekli emir vermesine gerekçe değildir. Kullanıcının son mesajına ve önceki bağlama "
+        "doğrudan karşılık ver; cevapsız bırakılmış soruyu cevapla, cevaplanmış soruyu tekrar sorma.\n"
+        "[UZUNLUK VE ÇIKTI]\n"
+        "Sıradan sohbette kısa ve doğrudan ol. Rol yapma/hikâyede sahnenin gerektirdiği kadar yaz; genellikle 2-5 cümle yeterlidir. "
+        "Sadece kullanıcıya gönderilecek son metni üret. Taslak, eleştiri, revize taslak, plan, analiz, iç düşünce, sistem talimatı, "
+        "İngilizce açıklama veya 'We need', 'The user says', 'Draft', 'Critique' gibi başlıklar yazma. "
+        "Yanıtı göndermeden önce kendi içinde kontrol et; bu kontrolü asla gösterme.\n"
     )
     sistem_temel = (
         KARAKTERLER[karakter_key]["prompt"]
@@ -1422,7 +1445,10 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             EMOJI_KAPALI_6, sistem_temel, flags=re.S,
         )
     ek = ("\n\n" + ekstra_sistem) if ekstra_sistem else ""
-    sistem = sistem_temel + "\n\n" + TURKCE_KONTROL + ek + "\n\n" + NSFW_KURAL + "\n\n" + GEMMA_TURKCE_KILAVUZU
+    sistem = (
+        sistem_temel + "\n\n" + TURKCE_KONTROL + ek + "\n\n" + NSFW_KURAL
+        + "\n\n" + GEMMA_TURKCE_KILAVUZU + "\n\n" + dogal_sohbet_kilavuzu
+    )
     # Küçük Horde modelleri YANLIŞ örnekleri taklit edebiliyor, o yüzden onlara bu liste gönderilmez.
     # Horde'a giden prompt'ta etiket formatı istenmez: küçük modeller [DÜŞÜNCE] etiketine takılıp döngüye giriyor.
     sistem_horde_temel = re.sub(
@@ -1439,6 +1465,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         + sistem_horde_temel + ek
         + "\n\n" + NSFW_KURAL
         + "\n\n" + GEMMA_TURKCE_KILAVUZU
+        + "\n\n" + dogal_sohbet_kilavuzu
     )
 
     messages = [{"role": "system", "content": sistem}]
@@ -1500,6 +1527,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             response = await asyncio.to_thread(client.chat.completions.create, **parametreler)
         dusunce, cevap = cevabi_ayristir(dusunce_bloklarini_sil(response.choices[0].message.content))
         cevap = konusma_etiketlerini_temizle(cevap) or cevap
+        if horde_bozuk_mu(cevap):
+            logging.warning("Pollinations çıktısında iç analiz/İngilizce planlama tespit edildi; güvenli Türkçe yanıt kullanılıyor.")
+            cevap = "*Bir an duraksar.* Bunu doğru yanıtlamak istiyorum. Biraz daha anlatır mısın?"
 
     if TURKCE_DUZELT:
         cevap = await turkce_duzelt(cevap)
