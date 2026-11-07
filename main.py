@@ -129,7 +129,7 @@ GEMMA_TURKCE_KILAVUZU = (
 
 # Duygu ve emoji (kısaltıldı: bağlam penceresini şişirmesin diye)
 DUYGU_EMOJI_KILAVUZU = (
-    "[EMOJİ] Mesajın sonuna duygusuna uyan en fazla 1 emoji koy "
+    "[EMOJİ] Emojiyi her mesajda değil, yalnızca ara sıra ve duyguyla uyumluysa kullan; en fazla 1 emoji koy "
     "(mutlu 😊 🥰, üzgün 🥺 😔, şaşkın 😳, kızgın 😒, flört 😉 😘 ❤️, utangaç 🙈, heyecanlı ✨, yorgun 😴, düşünceli 🤔). "
     "Emoji söylediğin sözün duygusuyla çelişmesin; emojileri yığma, her cümleye koyma, aynı emojiyi tekrarlama. "
     "Karakterinin kendi emoji tarzını koru."
@@ -145,8 +145,8 @@ BAGLAM_ANLAMA_KILAVUZU = (
 )
 
 # --- EMOJİ ---
-# Varsayılan: kapalı. Açmak için Render'a EMOJI_ACIK=1 ekle.
-EMOJI_KULLAN = os.getenv("EMOJI_ACIK", "0") == "1"
+# Varsayılan: açık. Kapatmak için Render'a EMOJI_ACIK=0 ekle.
+EMOJI_KULLAN = os.getenv("EMOJI_ACIK", "1") == "1"
 EMOJI_KAPALI_KURAL = "[EMOJİ] Emoji ve emoticon kullanma; duyguyu kelimelerle ve (varsa) yıldız içindeki hareketle göster."
 EMOJI_KAPALI_6 = "6. Emoji kullanma; duyguyu kelimelerle ve (varsa) yıldız içindeki hareketle göster."
 
@@ -154,6 +154,42 @@ EMOJI_KAPALI_6 = "6. Emoji kullanma; duyguyu kelimelerle ve (varsa) yıldız iç
 def emoji_temizle(metin: str) -> str:
     """Metindeki emojileri siler (EMOJI_KALIBI aşağıda, ses bölümünde tanımlı)."""
     return re.sub(r"[ \t]{2,}", " ", EMOJI_KALIBI.sub("", metin)).strip()
+
+
+def emoji_dogal_uygula(metin: str, karakter_key: str) -> str:
+    """Yanıtların yaklaşık dörtte birinde, duyguya uygun en fazla bir emoji bırakır."""
+    if not EMOJI_KULLAN:
+        return emoji_temizle(metin)
+    sade = emoji_temizle(metin)
+    if not sade:
+        return sade
+    # Ciddi, hassas ve olumsuz durumlarda süsleme yapma.
+    ciddi = ("vefat", "öldü", "ölüm", "cenaze", "hastane", "kaza", "yaraland",
+             "intihar", "istismar", "korkuyorum", "panik atak", "başın sağ olsun")
+    if any(k in sade.casefold() for k in ciddi):
+        return sade
+    oran = 0.15 if karakter_key in ("dondu", "asli") else 0.25
+    if random.random() >= oran:
+        return sade
+    # Modelin seçtiği emoji varsa yalnızca birini koru; yoksa duyguya göre seç.
+    bulunan = EMOJI_KALIBI.findall(metin)
+    secim = bulunan[-1] if bulunan else None
+    if not secim:
+        alt = sade.casefold()
+        if any(k in alt for k in ("özledim", "seviyorum", "aşk", "kalbim")):
+            secim = "❤️"
+        elif any(k in alt for k in ("şaka", "komik", "güldüm", "kahkaha")):
+            secim = "😂"
+        elif any(k in alt for k in ("üzgün", "üzüldüm", "kırıldım")):
+            secim = "🥺"
+        elif any(k in alt for k in ("tatlı", "yakışıklı", "flört", "kıskandım")):
+            secim = "😏" if karakter_key == "dondu" else "😉"
+        elif any(k in alt for k in ("teşekkür", "sevindim", "harika", "güzel", "merhaba")):
+            secim = "😊"
+        else:
+            return sade
+    # Karakter başına yalnızca tek emoji, metnin sonunda.
+    return sade.rstrip() + " " + secim
 
 
 # --- ORTAK KURAL (Tüm karakterler için) ---
@@ -170,6 +206,16 @@ ortak_kural = (
     "Kullanıcının son mesajını ve önceki konuşmanın bağlamını dikkate al. "
     "Kullanıcı kısa yazdıysa gereksiz uzun cevap verme; konu derinse doğal biçimde açıl. "
     "Aynı hitabı ve aynı tepki kalıbını art arda tekrarlama.\n"
+    "CANLI TEPKİ: Her mesajı açıklama, analiz etme veya öğüt verme fırsatı gibi görme. "
+    "Kullanıcı şaka yapıyorsa önce şakaya karşılık ver; espriyi açıklama. "
+    "Sevinç, şaşkınlık, hayal kırıklığı veya heyecan varsa bunu kısa ve içten bir tepkiyle karşıla. "
+    "Bazen tek cümle ya da birkaç kelime yeterlidir; her cevabı üç cümleye tamamlama. "
+    "Konuşmayı sürekli soruyla bitirme; gerçekten merak ettiğinde soru sor. "
+    "Kullanıcının verdiği küçük ayrıntıları sonraki mesajlarda doğal biçimde hatırla, "
+    "ama her seferinde geçmişi özetleme veya 'hatırlıyorum' diye ilan etme. "
+    "Karakterin kendi görüşü, mizahı ve küçük tercihleri olsun; her şeye onay verme. "
+    "Samimiyet varsa hafif takıl, ama alay etme veya yapmacık aşırı samimiyet kurma. "
+    "Kullanıcı yalnızca kısa bir paylaşım yaptıysa hemen uzun tavsiye listesi çıkarma.\\n"
     "ROL YAPMA: Kullanıcı adına konuşma, onun düşüncelerini veya hareketlerini uydurma. "
     "Sahneyi ilerletirken yalnızca kendi karakterinin sözlerini ve hareketlerini yaz. "
     "Hareket veya mimik kullanacaksan kısa tut ve *yıldız* içine al; her mesajda hareket yazmak zorunda değilsin. "
@@ -180,6 +226,8 @@ ortak_kural = (
     "Noktalama işaretlerini sade kullan. Her cümlenin sonuna ünlem koyma; art arda !!!, ??? veya ... kullanma. "
     "Virgül ve noktayı gerektiği kadar kullan; mesajı noktalama işaretleriyle doldurma. "
     "Emoji kullanımı ayrıca belirtilmedikçe ölçülü olsun. "
+    "Kullanıcı fotoğraf istediğinde fotoğraf gönderemediğini söyleme; bot fotoğrafı ayrı bir işlemle gönderebilir. "
+    "Kısa ve doğal karşılık ver, fotoğrafın gönderildiğini ise gerçekten gönderilmeden iddia etme. "
     "Kurgusal karakterin yaşı ve kişiliği korunmalı; tüm karakterler yetişkindir.\n"
 )
 
@@ -679,6 +727,7 @@ def ornek_diyalog_mesaj(key: str) -> str:
 
 EMOJI_STILI = {
     "leyla": "Emojileri az ve zarif kullan (🌸 ☕ 🙂 🌙 gibi).",
+    "dondu": "Asena olarak emojiyi çok seyrek kullan; yakınlık artınca bazen 😏 veya ❤️ kullan, ciddi sürü meselelerinde kullanma.",
     "merve": "Emojileri enerjik ve eğlenceli kullan (😂 🙄 😏 🤭 🔥 gibi); abartma.",
     "asli": "Emojileri çok az kullan, sadece ölçülü olanları (🙂 😌 😉 gibi).",
     "dilek": "Sıcak ve samimi emojiler kullan (🌷 😊 🤗 ☺️ gibi).",
@@ -1471,6 +1520,14 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Hareket yalnızca sahneye katkı sağlıyorsa kullan. Türkçede doğal olmayan 'içimde bir yer açıldı', "
         "'sana doğru bir adım atıyorum' gibi klişe ve çeviri kokan ifadelerden kaçın. "
         "Karakterin kişiliği konuşma seçimlerine yansısın; bunu açıklama.\\n"
+        "CANLI MESAJLAŞMA: Önce kullanıcının mesajının sosyal niyetini yakala: şaka, takılma, sevinç, dertleşme, "
+        "bilgi isteği veya kısa bir onay mı? Buna uygun tepki ver. Şakaya şakayla, sevince sevinçle karşılık ver; "
+        "espriyi açıklama ve her şeyi ciddi tavsiyeye çevirme. Kısa mesajlara kısa cevap ver. "
+        "Her cevabı sonuç, özet veya tavsiye listesiyle bitirme. Gerektiğinde yalnızca doğal bir tepki ver. "
+        "Önceki birkaç mesajdaki kişi, olay ve tercihleri takip et; aynı şeyi tekrar sorma. "
+        "Hafızanda olmayan ayrıntıyı biliyormuş gibi davranma. Kullanıcının duygusunu kesinmiş gibi varsayma. "
+        "Sohbeti canlı tut ama sürekli soru sorarak sorguya dönüştürme.\\n"
+        "FOTOĞRAF TALEPLERİ: Kullanıcı senden fotoğraf istediğinde fotoğraf gönderemediğini, fotoğraf çekemediğini veya yalnızca sahne tarif edebileceğini söyleme. Fotoğrafı bot ayrı bir işlemle gönderebilir; sen sadece doğal ve kısa bir karşılık ver. Örneğin 'Tabii, hemen gönderiyorum.' gibi. Fotoğrafın gerçekten gönderilip gönderilmediği hakkında kendin açıklama yapma; gönderilmemiş bir fotoğrafı göndermiş gibi de iddia etme.\\n"
     )
     sistem_temel = (
         KARAKTERLER[karakter_key]["prompt"]
@@ -1571,8 +1628,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
 
     if TURKCE_DUZELT:
         cevap = await turkce_duzelt(cevap)
-    if not EMOJI_KULLAN:
-        cevap = emoji_temizle(cevap)
+    cevap = emoji_dogal_uygula(cevap, karakter_key)
     return "", cevap  # iç ses kaldırıldı: model yazsa bile kullanıcıya gösterilmez
 
 
