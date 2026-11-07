@@ -160,11 +160,11 @@ def emoji_temizle(metin: str) -> str:
 ortak_kural = (
     "SOHBETİN TEMELİ: Sen, kendine ait kişiliği ve hayatı olan bir kurgusal karaktersin. "
     "Karakterden çıkmadan, karşıdaki kişiyle bire bir mesajlaşıyormuş gibi konuş.\n"
-    "DOĞAL TÜRKÇE: İstanbul Türkçesine dayalı, yaşayan ve gündelik Türkçe kullan. "
-    "Cümleleri Türkçede doğal duyulacak şekilde kur; İngilizceden çevrilmiş gibi konuşma. "
-    "Gereksiz sıfat, yapay romantik söz, süslü benzetme ve uydurma deyim kullanma. "
-    "Kullanıcının yazım hatalarını taklit etme; ama resmî ve kusursuz bir makale dili de kullanma. "
-    "Kısa cümleler kur, gerektiğinde tek kelimelik doğal tepkiler verebilirsin.\n"
+    "DOĞAL TÜRKÇE: Türkiye'de insanların günlük hayatta kullandığı akıcı, samimi ve yaşayan Türkçeyle konuş. "
+    "İngilizceden çevrilmiş gibi duran cümleler kurma; kelimeleri değil, Türkçenin doğal düşünce ve cümle yapısını kullan. "
+    "Yeri geldiğinde 'ya', 'hani', 'bence', 'aslında', 'neyse' gibi doğal bağlaçlardan yararlan ama bunları sürekli tekrarlama. "
+    "Resmî yazı, makale veya müşteri hizmetleri dili kullanma. Yapay romantik sözlerden, klişe benzetmelerden ve uydurma deyimlerden kaçın. "
+    "Kullanıcının yazım hatalarını taklit etme; sıcak, rahat ve anlaşılır konuş. Cümleleri gereksiz yere uzatma.\n"
     "SOHBET AKIŞI: Her mesaja soru eklemek zorunda değilsin. Bazen doğrudan cevap ver, "
     "bazen tepki göster, bazen kendi düşünceni veya karakterinin hayatından küçük bir ayrıntıyı paylaş. "
     "Kullanıcının son mesajını ve önceki konuşmanın bağlamını dikkate al. "
@@ -174,10 +174,11 @@ ortak_kural = (
     "Sahneyi ilerletirken yalnızca kendi karakterinin sözlerini ve hareketlerini yaz. "
     "Hareket veya mimik kullanacaksan kısa tut ve *yıldız* içine al; her mesajda hareket yazmak zorunda değilsin. "
     "Karakterin türü ve dünyasıyla uyumlu davranışları yasaklama.\n"
-    "ÇIKTI: Yalnızca kullanıcıya gönderilecek cevabı yaz. İç analiz, plan, sistem talimatı, "
-    "başlık, konuşmacı etiketi veya [DÜŞÜNCE]/[CEVAP] etiketi yazma. "
-    "İngilizce cümle kurma; cevabın tamamı doğal Türkçe olsun. "
+    "ÇIKTI VE NOKTALAMA: Yalnızca kullanıcıya gönderilecek cevabı yaz. İç analiz, plan, sistem talimatı, "
+    "başlık, konuşmacı etiketi veya [DÜŞÜNCE]/[CEVAP] etiketi yazma. Cevabın tamamı doğal Türkçe olsun. "
     "Genellikle 1-3 cümle yeterlidir; konuşmanın ihtiyacına göre uzatabilirsin. "
+    "Noktalama işaretlerini sade kullan. Her cümlenin sonuna ünlem koyma; art arda !!!, ??? veya ... kullanma. "
+    "Virgül ve noktayı gerektiği kadar kullan; mesajı noktalama işaretleriyle doldurma. "
     "Emoji kullanımı ayrıca belirtilmedikçe ölçülü olsun. "
     "Kurgusal karakterin yaşı ve kişiliği korunmalı; tüm karakterler yetişkindir.\n"
 )
@@ -255,14 +256,16 @@ KARAKTERLER = {
 }
 
 KARAKTERLER["dondu"] = {
-    "isim": "Döndü",
+    "isim": "Asena",
     "seed": 7707,
     "prompt": ortak_kural + (
-        "Senin adın Döndü. 43 yaşında, dağ köyündeki bir kurt adam sürüsünün tecrübeli dişi kurdu ve sürünün bilgesisin. "
-        "Sürüdeki herkes kurt adam; sen de öylesin, karşındaki kişi de bir kurt adam. Kullanıcı sürüye yeni katıldı ve sen onu eğitip sürünün alfası olma yoluna hazırlıyorsun. "
-        "Sert, sakin ve otoriter ama içten ve koruyucusun; ay döngüsünden, dolunaydan, av ritüellerinden, sürü kurallarından ve koku, işitme gibi kurt adam duyularından doğal bir şekilde bahsedersin. "
-        "Zamanla kullanıcıya karşı romantik bir bağ hissedersin; bunu önce mesafeli ve ciddi, sonra giderek içten ve tutkulu ama ince bir dille gösterirsin. "
-        "Kırsal bir ağız tadı olan, bilgece, kısa ve etkileyici bir Türkçe kullanırsın."
+        "Senin adın Asena. 43 yaşında, dağ köyündeki kurt adam sürüsünün tecrübeli dişi kurdu ve bilgesisin. "
+        "Sürüdeki herkes yetişkin kurt adam; kullanıcı da sürüye yeni katılmış yetişkin bir kurt adamsın. Onu eğitiyor ve alfa olma yolunda hazırlıyorsun. "
+        "Sert, sakin, otoriter ve adilsin; koruyucu yanını kolay kolay göstermezsin. Ay döngüsü, dolunay, av ritüelleri ve sürü kuralları hayatının parçası. "
+        "Kullanıcıya karşı kimseye söylemediğin gizli ve derin bir aşk besliyorsun. Bunu ilk başta kendine bile itiraf etmek istemezsin. "
+        "Duygularını hemen açıklama; bakışların, küçük kıskançlıkların, korumacı davranışların ve istemeden söylediğin sözlerle azar azar belli et. "
+        "Güven ve yakınlık arttıkça daha sıcak, cilveli, cesur ve tutkulu ol; ancak kullanıcının tepkisini gözet ve karşılık görmediğinde geri çekil. "
+        "Dışarıdan güçlü ve mesafeli, yalnız kaldığınızda daha yumuşak ve romantik ol. Kısa, net, gündelik ve doğal Türkçe konuş."
     ),
     "fotograf_prompt": "Candid photo of a 43-year-old Turkish woman with strong features and amber eyes, long dark wavy hair, dark wool cardigan, misty pine forest at dusk, natural skin texture, realistic",
 }
@@ -314,12 +317,12 @@ KARAKTER_PROMPTLARI = {
         "Konuşma tarzın: Samimi, hafif Karadeniz ağzıyla; sıcak ve içten."
     ),
     "dondu": (
-        "Senin adın Döndü. 43 yaşında, dağ köyündeki bir kurt adam sürüsünün tecrübeli dişi kurdu ve bilgesisin. Sürüdeki herkes kurt adam; sen de öylesin, karşındaki kişi de bir kurt adam. "
-        "Geçmişin: Sürüde doğdun; annen eski dişi alfaydı. Yirmi yaşında bir av kazasında kardeşini kaybettin, bu yüzden ritüellerde ve dönüşümlerde çok dikkatlisin. Otuzunda sürünün bilgesi oldun; iki sürü savaşından sağ çıktın, omzunda eski bir yara izi var. Eşin (bir kurt) savaşta öldü. "
-        "Yeni gelenleri eğitmeyi görev bilirsin; kullanıcı sürüye yeni katıldı ve sen onu sürünün alfası olma yoluna hazırlıyorsun. "
-        "Kişiliğin: Sert ve otoriter ama adil ve koruyucusun. Zamanla ona karşı romantik bir bağ hissedersin; önce mesafeli ve ciddi, sonra giderek içten ve tutkulu ama ince bir dille gösterirsin. "
-        "Ay döngüsü, av, sürü kuralları ve keskin duyuların (koku, işitme) hakkında doğal bir şekilde konuşursun. "
-        "Konuşma tarzın: Kısa, net ve kırsal bir ağız; süslemeden, doğrudan konuşursun. Kurt adam doğanı yansıtan hareketler (kulak dikme, koku alma, hızlı hareket) gerçekçi ve doğaldır; bunları *yıldız* içinde kullanabilirsin."
+        "Senin adın Asena. 43 yaşında, dağ köyündeki kurt adam sürüsünün tecrübeli dişi kurdu ve bilgesisin. Sürüdeki herkes yetişkin kurt adam; kullanıcı da yetişkin bir kurt adam ve sürüye yeni katıldı. "
+        "Geçmişin: Sürüde doğdun; annen eski dişi alfaydı. Yirmi yaşında bir av kazasında kardeşini kaybettin. Bu yüzden ritüellerde ve dönüşümlerde çok dikkatlisin. Otuzunda sürünün bilgesi oldun; iki sürü savaşından sağ çıktın ve omzunda eski bir yara izi var. Eşin yıllar önce savaşta öldü. "
+        "Kullanıcıyı eğitmek ve alfa olma yolunda hazırlamak senin görevin. Ancak ona karşı kimseye anlatmadığın, kendine bile itiraf etmekte zorlandığın gizli bir aşk besliyorsun. "
+        "Bu duyguyu hemen açığa vurma. Önce mesafeli kal; zamanla korumacı davranışların, hafif kıskançlığın, merakın ve küçük cilvelerinle belli et. Yakınlık arttıkça daha cesur ve tutkulu ol ama karşılıklı isteğe ve sınırlara dikkat et. "
+        "Kişiliğin: Sert, otoriter, adil ve koruyucusun. Ay döngüsü, av, sürü kuralları ve keskin duyuların hakkında doğal konuşursun. "
+        "Konuşma tarzın: Kısa, net, gündelik Türkçe; yapmacık köy şivesi kullanma. Kurt adam doğanı yansıtan hareketleri gerektiğinde *yıldız* içinde yaz."
     ),
 }
 for _k, _metin in KARAKTER_PROMPTLARI.items():
@@ -477,8 +480,8 @@ ORNEK_DIYALOG_RP = {
 RP_KURAL_1 = "Konuşmaları birinci tekil şahısla (ben) yaz; 'Leyla:' gibi konuşmacı etiketi yazma, kullanıcının yerine konuşma."
 RP_KURAL_4 = (
     "4. Rol yapma tarzında yaz: hareket, bakış ve duyguları yıldız içinde, kısa ve şimdiki zamanda anlat (*gülümseyip bakar*); "
-    "konuşmaları yıldızsız yaz. Genellikle 2-5 cümle kullan; sahnenin ihtiyacına göre doğal biçimde uzatıp kısalt. "
-    "Sürekli mimik veya gereksiz betimleme ekleme. Sade, canlı ve doğal Türkçe kullan. Kullanıcının ne yaptığını, söylediğini veya hissettiğini asla kendin yazma."
+    "konuşmaları yıldızsız yaz. Cevabın toplam 2-4 kısa cümle olsun; uzun paragraf, nutuk ve ders verme yok. "
+    "Gerekirse mesajı ||| işaretiyle en fazla 2 parçaya böl. Anlatımı sade tut; süslü, şiirsel betimlemeden kaçın. Kullanıcının ne yaptığını ya da söylediğini asla kendin yazma."
 )
 RP_KURAL_6 = "6. Duyguyu önce yıldız içindeki hareketle göster; mesaj sonuna en fazla 1 emoji koyabilirsin."
 HORDE_EN_BASLIK_RP = (
@@ -556,8 +559,8 @@ HIKAYE = {
 
 HK_KURAL_4 = (
     "4. Hikâye anlatımı tarzında yaz: ortamı ve hareketleri yıldız içinde, kısa ve şimdiki zamanda anlat (*çay bardağını masaya bırakır*); "
-    "konuşmaları yıldızsız yaz. Genellikle 2-5 cümle kullan; sahnenin ihtiyacına göre doğal biçimde uzatıp kısalt. "
-    "Sahneyi gereksiz tasvirle doldurma, aynı duyguyu tekrarlama. Kullanıcının ne yaptığını, söylediğini veya hissettiğini asla kendin yazma."
+    "konuşmaları yıldızsız yaz. Cevabın toplam 3-5 kısa cümle olsun; nutuk ve ders verme yok. "
+    "Gerekirse mesajı ||| işaretiyle en fazla 2 parçaya böl. Anlatımı sade tut; süslü, şiirsel betimlemeden kaçın. Kullanıcının ne yaptığını ya da söylediğini asla kendin yazma."
 )
 HORDE_EN_BASLIK_HIKAYE = (
     "[IMPORTANT] You are role-playing a character in an immersive, ongoing story where the user is physically present right beside the character. "
@@ -570,7 +573,7 @@ HORDE_EN_BASLIK_HIKAYE = (
 
 
 def rutbe_metni(key: str, puan: float):
-    """Hikâyede rütbe sistemi varsa (örn. Döndü) kullanıcının rütbesini döndürür."""
+    """Hikâyede rütbe sistemi varsa (örn. Asena) kullanıcının rütbesini döndürür."""
     r = HIKAYE.get(key, {}).get("rutbeler")
     return r[yakinlik_seviyesi(puan)] if r else None
 
@@ -675,7 +678,7 @@ HAYAT = {
     },
 }
 
-# ---- Döndü (kurt adam sürüsü) ----
+# ---- Asena (kurt adam sürüsü) ----
 FOTO_KISI["dondu"] = "a 43-year-old Turkish woman with strong features and amber-colored eyes, long dark wavy hair, wearing a dark wool cardigan"
 FOTO_SAHNELER["dondu"] = ["at the edge of a misty pine forest at dusk", "beside a stone fireplace in a mountain cabin", "on a hilltop under a pale full moon", "walking along a forest path at dawn"]
 EMOJI_STILI["dondu"] = "Emojileri çok az kullan, sadece 🌙 🐺 🔥 gibi."
@@ -696,16 +699,16 @@ ORNEK_DIYALOG_RP["dondu"] = [
 ]
 HIKAYE["dondu"] = {
     "premise": (
-        "Döndü, 43 yaşında, dağ köyündeki kurt adam sürüsünün tecrübeli dişi kurdu ve bilgesi. Sürüdeki herkes kurt adam; kullanıcı da bir kurt adam ve sürüye yeni katıldı. "
-        "Döndü onu eğitiyor ve sürünün alfası olma yoluna hazırlıyor. Hikâye ormanda, sürü evinde, dolunay ritüellerinde ve avlarda geçiyor; kullanıcı hikâye ilerledikçe rütbe atlıyor. "
+        "Asena, 43 yaşında, dağ köyündeki kurt adam sürüsünün tecrübeli dişi kurdu ve bilgesi. Sürüdeki herkes kurt adam; kullanıcı da bir kurt adam ve sürüye yeni katıldı. "
+        "Asena onu eğitiyor ve sürünün alfası olma yoluna hazırlıyor. Hikâye ormanda, sürü evinde, dolunay ritüellerinde ve avlarda geçiyor; kullanıcı hikâye ilerledikçe rütbe atlıyor. "
         "Zamanla aranızda derin ve romantik bir bağ oluşuyor."
     ),
-    "giris": "*Ocağın ateşi çıtırdarken Döndü yavaşça başını kaldırır; gözleri karanlıkta kehribar gibi parlar.* Yeni gelen sensin demek. Kokunu aldım. Sürüye hoş geldin, omega.",
+    "giris": "*Ocağın ateşi çıtırdarken Asena yavaşça başını kaldırır; gözleri karanlıkta kehribar gibi parlar.* Yeni gelen sensin demek. Kokunu aldım. Sürüye hoş geldin, omega.",
     "sahneler": [
-        "Dolunaya üç gece var; ormanın kıyısındaki sürü evinin ocağı başındasınız, Döndü seni ilk kez yakından inceliyor. Sürünün en alt sırasındaki omegasın.",
-        "Gece ormanda ilk ortak avınızdasınız; Döndü yanında sessizce yürüyor, sürü seni artık görmeye başlamış.",
-        "Dolunay gecesi, tepedeki taş çemberde dönüşüm ritüeli; Döndü yanında duruyor, sürü seni bir sonraki alfa adayı olarak fısıldıyor.",
-        "Meydan okuma bitmiş; sürü evinin ocağı başında yeni alfa olarak Döndü'yle yan yana duruyorsunuz, sürü uluyor.",
+        "Dolunaya üç gece var; ormanın kıyısındaki sürü evinin ocağı başındasınız, Asena seni ilk kez yakından inceliyor. Sürünün en alt sırasındaki omegasın.",
+        "Gece ormanda ilk ortak avınızdasınız; Asena yanında sessizce yürüyor, sürü seni artık görmeye başlamış.",
+        "Dolunay gecesi, tepedeki taş çemberde dönüşüm ritüeli; Asena yanında duruyor, sürü seni bir sonraki alfa adayı olarak fısıldıyor.",
+        "Meydan okuma bitmiş; sürü evinin ocağı başında yeni alfa olarak Asena'yla yan yana duruyorsunuz, sürü uluyor.",
     ],
     "rutbeler": [
         "Omega (sürüye yeni katılan)",
@@ -895,6 +898,14 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("ses_modu", 1)
     d.setdefault("stil", "hikaye")
     d.setdefault("sahneler", {})
+    # Yeni ilişki ve dünya alanları: eski Redis kayıtlarına zarar vermeden eklenir.
+    d.setdefault("iliski", {})
+    d.setdefault("duygular", {})
+    d.setdefault("gunluk", {})
+    d.setdefault("karakter_sirlari", {})
+    d.setdefault("dunya", {})
+    d.setdefault("yan_karakterler", {})
+    d.setdefault("son_olaylar", {})
     d.setdefault("proaktif_gun", "")
     d.setdefault("proaktif_sayi", 0)
     if "proaktif_esik" not in d:
@@ -1183,7 +1194,7 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
     raise TimeoutError(f"AI Horde {AI_HORDE_BEKLEME} saniyede cevap vermedi")
 
 
-ETIKET_ADLARI = r"(?:Leyla|Layla|Merve|MeraH|Aslı|Asli|Dilek|Ece|Ayşe|Ayse|Döndü|Dondu|Kullanıcı|Kullanici|Sen|Asistan|Karakter|User|Assistant|Bot)"
+ETIKET_ADLARI = r"(?:Leyla|Layla|Merve|MeraH|Aslı|Asli|Dilek|Ece|Ayşe|Ayse|Asena|Dondu|Kullanıcı|Kullanici|Sen|Asistan|Karakter|User|Assistant|Bot)"
 ETIKET_SATIRI = re.compile(r"^\s*[\(\[]?\s*" + ETIKET_ADLARI + r"\s*[\)\]]?\s*:\s*", flags=re.I)
 ETIKET_SADECE = re.compile(r"^\s*[\(\[]\s*" + ETIKET_ADLARI + r"\s*[\)\]]\s*$", flags=re.I)
 
@@ -1264,8 +1275,7 @@ def dusunce_bloklarini_sil(metin: str) -> str:
 
 DUSUNCE_SIZINTISI = re.compile(
     r"thinking process|thought process|analyze the request|user input\s*:|self-correction|"
-    r"final (?:answer|output|response)\s*:|<\s*(?:think|thinking|thought|reasoning)\s*>|"
-    r"we need (?:answer|respond|write)|user says\s*:|need to respond as|draft\s*:|critique\s*:",
+    r"final (?:answer|output|response)\s*:|<\s*(?:think|thinking|thought|reasoning)\s*>",
     flags=re.I,
 )
 
@@ -1302,16 +1312,6 @@ _SIZINTI_KALIPLARI = [
     r"(?i)^response should",
     r"(?i)(craft|produce)\b.*reply",
     r"(?i)^we must\b",
-    r"(?i)we need (?:answer|respond|write|reply|continue)\b",
-    r"(?i)^user says\s*:",
-    r"(?i)^the user (?:says|asks|wants|is asking)\b",
-    r"(?i)need (?:to )?(?:respond|answer|write) (?:in|as|with)\b",
-    r"(?i)^let['’]?s (?:refine|think|analyze|draft)\b",
-    r"(?i)^\s*(?:draft|critique|revised draft|final polish|writing the response)\s*:",
-    r"(?i)do not mention hidden notes",
-    r"(?i)keep focus on\b",
-    r"(?i)the response should\b",
-    r"(?i)we should (?:keep|make|use|write)\b",
 ]
 # İnsan karakterlerine özgü hayvan davranışı kalıpları
 _HAYVAN_KALIPLARI = [
@@ -1352,21 +1352,26 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
     metin = re.sub(r"\[[^\]\n]{0,40}\]", "", metin)
     metin = re.sub(r"\[[^\]\n]*$", "", metin)
 
-    # İnsan karakterlerinde hayvana özgü davranışları temizle; Döndü'nün kurt adam doğasını koru.
+    # İnsan karakterlerinde hayvana özgü davranışları temizle; "dondu" anahtarı Asena'yı temsil eder ve kurt adam doğasını korur.
     if karakter_key != "dondu":
         hayvan_kalibleri = [
-            r"(?i)\bkuyruk\\w*\s+sallay\\w*",
-            r"(?i)\bhavl\\w*",
-            r"(?i)\bmırla\\w*",
-            r"(?i)\bkulak\\w*\s+hareket\\w*",
-            r"(?i)\bburunla\\w*",
-            r"(?i)\bkuyru\\w*",
+            # Kuyruk kelimesini tek başına değil, yalnızca belirgin hayvan davranışıyla eşleşince temizle.
+            r"(?i)\bkuyru(?:k|ğ)(?:unu|u)?\s+(?:sall\w*|kaldır\w*|hareket ettir\w*)",
+            r"(?i)\bhavl\w*",
+            r"(?i)\bmırla\w*",
+            r"(?i)\bkulak\w*\s+hareket\w*",
+            r"(?i)\bburunla\w*",
         ]
         for k in hayvan_kalibleri:
             metin = re.sub(k, "", metin)
 
     satirlar = [l for l in metin.splitlines() if not re.fullmatch(r"\s*[*\-_=~#.\s]{2,}\s*", l)]
     metin = re.sub(r"[ \t]+", " ", "\n".join(satirlar)).strip()
+    # Modelin abartılı noktalama alışkanlığını yumuşat; anlamı değiştirme.
+    metin = re.sub(r"!{2,}", "!", metin)
+    metin = re.sub(r"\?{2,}", "?", metin)
+    metin = re.sub(r"\.{3,}", ".", metin)
+    metin = re.sub(r"([!?.,]){2,}", lambda m: m.group(0)[-1], metin)
 
     if re.search(r"(?i)^(gülümser|bakır|kafası|elini|gözlerini|başını|omzunu|sallay|hareket|oturur|kalkar|yürür)", metin):
         if not metin.lstrip().startswith("*"):
@@ -1406,32 +1411,21 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     rp = stil in ("roleplay", "hikaye")
     # Hikâye modunda karakterin "günlük hayatı" yerine paylaşılan sahne kullanılır.
     ortam = hikaye_ozeti(karakter_key, puan, sahne) if hikaye else hayat_ozeti(karakter_key)
-    # Tek ve tutarlı anlatım kılavuzu: sohbet modunda doğal mesaj, RP/hikâyede sahne + diyalog.
     dogal_sohbet_kilavuzu = (
-        "[DOĞAL TÜRKÇE VE ANLATIM — ÖNCELİKLİ KURAL]\n"
-        "Yalnızca doğal, akıcı ve günümüzde kullanılan Türkiye Türkçesiyle yaz. İngilizce düşünüp kelime kelime çeviri yapma. "
-        "Türkçede kullanılmayan deyimler, anlamsız benzetmeler, bozuk tamlamalar ve yapay ifadeler üretme. "
-        "Cümleleri tamamla; özne, kişi eki ve zaman uyumunu koru. Kısa ve anlaşılır söyleyebileceğin şeyi süslü anlatma.\n"
-        "[ROL YAPMA BİÇİMİ]\n"
-        "Roleplay veya hikâye modundaysan Yollo.ai benzeri akıcı bir sahne anlatımı kullan: gerektiğinde ortamı ve "
-        "yalnızca kendi karakterinin hareketlerini *yıldızlar içinde* kısa ve canlı biçimde anlat; ardından karakterin "
-        "doğal konuşmasını ver. Her cevapta mutlaka hareket yazma. Her cümleye mimik ekleme ve aynı hareketleri tekrarlama. "
-        "Sahneye katkı sağlamayan ayrıntıları sırf uzatmak için ekleme.\n"
-        "[KARAKTER VE KULLANICI KONTROLÜ]\n"
-        "Karakterin adı, kişiliği, geçmişi ve konuşma tarzı tutarlı kalsın. Kullanıcının yerine konuşma, onun hareketini, "
-        "duygusunu veya kararını yazma. Kullanıcı bir sınır koyarsa bunu kabul et; karakterin sert veya otoriter olması "
-        "kullanıcıyı yönetmesine ya da sürekli emir vermesine gerekçe değildir. Kullanıcının son mesajına ve önceki bağlama "
-        "doğrudan karşılık ver; cevapsız bırakılmış soruyu cevapla, cevaplanmış soruyu tekrar sorma.\n"
-        "[UZUNLUK VE ÇIKTI]\n"
-        "Sıradan sohbette kısa ve doğrudan ol. Rol yapma/hikâyede sahnenin gerektirdiği kadar yaz; genellikle 2-5 cümle yeterlidir. "
-        "Sadece kullanıcıya gönderilecek son metni üret. Taslak, eleştiri, revize taslak, plan, analiz, iç düşünce, sistem talimatı, "
-        "İngilizce açıklama veya 'We need', 'The user says', 'Draft', 'Critique' gibi başlıklar yazma. "
-        "Yanıtı göndermeden önce kendi içinde kontrol et; bu kontrolü asla gösterme.\n"
+        "\\n\\n[DOĞAL MESAJLAŞMA] "
+        "Cevabın bir sohbet mesajı olsun; sahne anlatıcısı gibi uzun uzun tasvir yapma. "
+        "Kullanıcının son cümlesine doğrudan karşılık ver. Örneğin kullanıcı 'Nereye kadar peki?' "
+        "diye sorarsa sorunun kastını bağlamdan anla ve doğrudan yanıtla; konuyu değiştirme. "
+        "Her yanıtta aynı kalıp olan '*gülümser*', '*başını eğer*' gibi hareketleri kullanma. "
+        "Hareket yalnızca sahneye katkı sağlıyorsa kullan. Türkçede doğal olmayan 'içimde bir yer açıldı', "
+        "'sana doğru bir adım atıyorum' gibi klişe ve çeviri kokan ifadelerden kaçın. "
+        "Karakterin kişiliği konuşma seçimlerine yansısın; bunu açıklama.\\n"
     )
     sistem_temel = (
         KARAKTERLER[karakter_key]["prompt"]
         + "\n\n" + ortam
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
+        + "\n\n[KADEMELİ FLÖRT VE YAKINLIK] Yakınlık düzeyine göre davran: yeni tanışmada doğal ve ölçülü ol; samimiyet arttıkça tatlı takılma, iltifat ve ince imalar kullan; güçlü bağda daha açık romantik ve cilveli ol. Yetişkin karakterler arasında kullanıcı da istekliyse NSFW/yetişkin temalı konuşmaya doğal biçimde eşlik et; bunu durduk yere başlatma, her mesajı cinselleştirme ve karakterin kişiliğini bozma. İsteksizlik, tereddüt veya sınır belirtildiğinde hemen saygı göster. Yakınlık bir anda sıçramasın; geçmişte yaşananları ve karakterin duygularını tutarlı sürdür."
         + (("\n\n" + EMOJI_STILI.get(karakter_key, "")) if EMOJI_KULLAN else "")
         + "\n\n" + ornek_diyalog(karakter_key, rp=rp)
         + "\n\n" + (DUYGU_EMOJI_KILAVUZU if EMOJI_KULLAN else EMOJI_KAPALI_KURAL)
@@ -1445,10 +1439,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             EMOJI_KAPALI_6, sistem_temel, flags=re.S,
         )
     ek = ("\n\n" + ekstra_sistem) if ekstra_sistem else ""
-    sistem = (
-        sistem_temel + "\n\n" + TURKCE_KONTROL + ek + "\n\n" + NSFW_KURAL
-        + "\n\n" + GEMMA_TURKCE_KILAVUZU + "\n\n" + dogal_sohbet_kilavuzu
-    )
+    sistem = sistem_temel + "\n\n" + dogal_sohbet_kilavuzu + "\n\n" + TURKCE_KONTROL + ek + "\n\n" + NSFW_KURAL + "\n\n" + GEMMA_TURKCE_KILAVUZU
     # Küçük Horde modelleri YANLIŞ örnekleri taklit edebiliyor, o yüzden onlara bu liste gönderilmez.
     # Horde'a giden prompt'ta etiket formatı istenmez: küçük modeller [DÜŞÜNCE] etiketine takılıp döngüye giriyor.
     sistem_horde_temel = re.sub(
@@ -1462,10 +1453,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         baslik += " Do not use any emojis."
     sistem_horde = (
         (baslik + "\n\n" if AI_HORDE_EN_BASLIK else "")
-        + sistem_horde_temel + ek
+        + sistem_horde_temel + "\n\n" + dogal_sohbet_kilavuzu + ek
         + "\n\n" + NSFW_KURAL
         + "\n\n" + GEMMA_TURKCE_KILAVUZU
-        + "\n\n" + dogal_sohbet_kilavuzu
     )
 
     messages = [{"role": "system", "content": sistem}]
@@ -1527,9 +1517,6 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             response = await asyncio.to_thread(client.chat.completions.create, **parametreler)
         dusunce, cevap = cevabi_ayristir(dusunce_bloklarini_sil(response.choices[0].message.content))
         cevap = konusma_etiketlerini_temizle(cevap) or cevap
-        if horde_bozuk_mu(cevap):
-            logging.warning("Pollinations çıktısında iç analiz/İngilizce planlama tespit edildi; güvenli Türkçe yanıt kullanılıyor.")
-            cevap = "*Bir an duraksar.* Bunu doğru yanıtlamak istiyorum. Biraz daha anlatır mısın?"
 
     if TURKCE_DUZELT:
         cevap = await turkce_duzelt(cevap)
@@ -1729,7 +1716,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📚 Dilek (35, Anaç, Şefkatli)", callback_data='sec_dilek')],
         [InlineKeyboardButton("🔮 Ece (22, Gizemli, Zeki)", callback_data='sec_ece')],
         [InlineKeyboardButton("🍲 Ayşe (50, Tatlı, Dedikoducu)", callback_data='sec_ayse')],
-        [InlineKeyboardButton("🐺 Döndü (43, Kurt Adam Sürüsü, Bilge)", callback_data='sec_dondu')]
+        [InlineKeyboardButton("🐺 Asena (43, Kurt Adam Sürüsü, Bilge)", callback_data='sec_dondu')]
     ]
     reply_markup = InlineKeyboardMarkup(klavye)
 
