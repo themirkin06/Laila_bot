@@ -1080,6 +1080,11 @@ def _env_int(ad: str, varsayilan: int) -> int:
 
 
 AI_HORDE_ACIK = os.getenv("AI_HORDE_ACIK", "1") != "0"
+# Varsayılan AI Horde modeli: kullanıcı tarafından Türkçe rol yapma testiyle seçildi.
+AI_HORDE_MODELS = os.getenv(
+    "AI_HORDE_MODELS",
+    "koboldcpp/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M",
+).strip()
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)
@@ -1136,7 +1141,7 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
         "trusted_workers": False,
         "dry_run": False,
     }
-    modeller = [x.strip() for x in os.getenv("AI_HORDE_MODELS", "").split(",") if x.strip()]
+    modeller = [x.strip() for x in AI_HORDE_MODELS.split(",") if x.strip()]
     if modeller:
         payload["models"] = modeller
 
@@ -1202,7 +1207,7 @@ def horde_sablonu_sec() -> str:
     secim = os.getenv("AI_HORDE_SABLON", "").strip().lower()
     if secim in ("duz", "gemma", "chatml", "llama3"):
         return secim
-    isim = os.getenv("AI_HORDE_MODELS", "").lower()
+    isim = AI_HORDE_MODELS.lower()
     if any(k in isim for k in ("stheno", "llama-3", "llama3", "l3-")):
         return "llama3"
     if any(k in isim for k in ("gemma", "tutu")):
