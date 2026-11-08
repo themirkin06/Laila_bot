@@ -238,7 +238,7 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
     payload = {
         "prompt": prompt,
         "params": {
-            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 220),
+            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 450),
             "max_context_length": _env_int("AI_HORDE_CONTEXT", 4096),
             "temperature": AI_HORDE_SICAKLIK,
             "top_p": 0.9,
@@ -595,7 +595,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         try:
             ham = await asyncio.to_thread(
                 ai_horde_uret_sync, horde_mesajlari,
-                _env_int("AI_HORDE_MAX_TOKENS_RP", 260) if rp else None,
+                _env_int("AI_HORDE_MAX_TOKENS_RP", 550) if rp else None,
                 "",   # Cevabı zorunlu hareketle başlatma; doğal diyalog öncelikli.
             )
             # Önce kapalı düşünce bloklarını ve bilinen iç-analiz satırlarını temizle;
