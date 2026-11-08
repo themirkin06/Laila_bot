@@ -196,7 +196,7 @@ AI_HORDE_MODELS = os.getenv(
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)
-AI_HORDE_PROMPT_BUTCE = _env_int("AI_HORDE_PROMPT_BUTCE", 9500)  # Horde'a giden toplam prompt için karakter bütçesi (~3000 token); aşarsa en eski mesajlar atılır          # Horde'a giden son mesaj sayısı (bağlam taşmasın)
+AI_HORDE_PROMPT_BUTCE = _env_int("AI_HORDE_PROMPT_BUTCE", 12500)  # Horde'a giden toplam prompt için karakter bütçesi (~3000 token); aşarsa en eski mesajlar atılır          # Horde'a giden son mesaj sayısı (bağlam taşmasın)
 AI_HORDE_BEKLEME = max(5, min(120, _env_int("AI_HORDE_MAX_WAIT", 20)))  # saniye (en fazla 120)
 AI_HORDE_POLL = 2.0
 try:
@@ -358,7 +358,7 @@ def horde_prompt_olustur(messages: list, on_ek: str = ""):
     return "\n\n".join(parcalar) + "\n\nAsistan:" + ((" " + on_ek) if on_ek else ""), ["\nKullanıcı:", "\nTalimatlar:", "\nAsistan:"]
 def dusunce_bloklarini_sil(metin: str) -> str:
     """<think>...</think> gibi kapalı düşünce bloklarını siler."""
-    metin = re.sub(r"<(think|thinking|thought|reasoning)>.*?</\1>", "", metin, flags=re.S | re.I)
+    metin = re.sub(r"<\s*(think|thinking|thought|reasoning)\s*>.*?<\s*/\s*\1\s*>", "", metin, flags=re.S | re.I)
     return metin.strip()
 
 
@@ -468,17 +468,23 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
 
     return metin
 def horde_butceye_sigdir(sistem: str, gecmis: list, son_mesaj: dict) -> list:
-    """Prompt, bağlam penceresini aşmasın diye en eski mesajları atar (sistem metni ve son mesaj her zaman kalır)."""
-    kalan = AI_HORDE_PROMPT_BUTCE - len(sistem) - len(str(son_mesaj.get("content", "")))
+    """Sistem talimatını ve son kullanıcı mesajını koruyup sığan en yeni konuşma turlarını tutar."""
+    # Karakter bütçesi, 4096 tokenlık Horde penceresine güvenli pay bırakacak şekilde ayarlanır.
+    kalan = max(0, AI_HORDE_PROMPT_BUTCE - len(sistem) - len(str(son_mesaj.get("content", ""))))
     secilen = []
     for item in reversed(gecmis):
         n = len(str(item.get("content", ""))) + 30
-        if kalan - n < 0:
-            break
+        if n > kalan:
+            # Bir eski mesaj sığmadı diye daha yeni ve kısa mesajları kaybetme.
+            continue
         kalan -= n
         secilen.append(item)
     if len(secilen) < len(gecmis):
-        logging.info(f"Horde bağlam bütçesi: {len(gecmis) - len(secilen)} eski mesaj çıkarıldı (sistem metni {len(sistem)} karakter).")
+        logging.info(
+            "Horde bağlam bütçesi: %s eski mesaj çıkarıldı, %s mesaj korundu "
+            "(sistem %s karakter, bütçe %s karakter).",
+            len(gecmis) - len(secilen), len(secilen), len(sistem), AI_HORDE_PROMPT_BUTCE,
+        )
     return list(reversed(secilen))
 
 
@@ -585,11 +591,14 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
                 _env_int("AI_HORDE_MAX_TOKENS_RP", 260) if rp else None,
                 "",   # Cevabı zorunlu hareketle başlatma; doğal diyalog öncelikli.
             )
+            # Önce kapalı düşünce bloklarını ve bilinen iç-analiz satırlarını temizle;
+            # kalite kontrolünü ham metin yerine kullanıcıya gösterilecek aday cevapta yap.
             ham = dusunce_bloklarini_sil(ham)
-            sebep = horde_bozuk_mu(ham) if AI_HORDE_KALITE_KONTROL else None
+            aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
+            sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
             if sebep:
-                raise RuntimeError(f"Horde çıktısı bozuk ({sebep})")
-            temiz = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
+                raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
+            temiz = aday
             if not temiz:
                 raise RuntimeError("Horde boş cevap döndürdü")
             horde_sonuc = ("", temiz)
