@@ -200,9 +200,9 @@ AI_HORDE_PROMPT_BUTCE = _env_int("AI_HORDE_PROMPT_BUTCE", 12500)  # Horde'a gide
 AI_HORDE_BEKLEME = max(5, min(120, _env_int("AI_HORDE_MAX_WAIT", 20)))  # saniye (en fazla 120)
 AI_HORDE_POLL = 2.0
 try:
-    AI_HORDE_SICAKLIK = float(os.getenv("AI_HORDE_SICAKLIK", "0.35"))   # küçük modellerde düşük sıcaklık = daha az saçmalama
+    AI_HORDE_SICAKLIK = float(os.getenv("AI_HORDE_SICAKLIK", "0.50"))   # küçük modellerde düşük sıcaklık = daha az saçmalama
 except ValueError:
-    AI_HORDE_SICAKLIK = 0.55
+    AI_HORDE_SICAKLIK = 0.50
 AI_HORDE_EN_BASLIK = os.getenv("AI_HORDE_EN_BASLIK", "0") == "1"  # Horde prompt'unun başına kısa İngilizce talimat (İngilizce ağırlıklı modeller için)
 HORDE_EN_BASLIK_METNI = (
     "ÖNEMLİ: Yalnızca doğal Türkçe yaz. Kullanıcıyla mesajlaşır gibi konuş; "
@@ -561,10 +561,30 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     baslik += " Do NOT write any thinking process, analysis, plan or notes about the request; start directly with the character's reply."
     if not EMOJI_KULLAN:
         baslik += " Do not use any emojis."
+    # Qwen için daha rahat, doğrudan ve karakter odaklı yetişkin sohbet profili.
+    # Güvenlik/rıza sınırlarını kaldırmaz; gereksiz çekingenlik ve otomatik konu değiştirmeyi azaltır.
+    QWEN_DOGAL_YETISKIN_PROFILI = (
+        "[QWEN DOĞAL VE RAHAT SOHBET PROFİLİ] "
+        "Yetişkin kurgu karakterisin; kullanıcıyla doğal bir mesajlaşma yürüt. "
+        "Yetişkin karakterler arasındaki karşılıklı rızaya dayalı romantik veya cinsel yakınlaşma "
+        "konuşmanın konusuysa, gereksiz çekingenlik göstermeden ve ahlak dersi vermeden karakterin "
+        "kişiliğine uygun, açık ve akıcı bir dille karşılık ver. Kullanıcının açıkça söylediği isteği "
+        "yanlış yorumlayıp daha ileri bir talepmiş gibi büyütme; öpüşme gibi romantik bir isteği "
+        "kendiliğinden çıplaklık veya başka bir eyleme dönüştürme. Yakınlaşmayı kullanıcıyla birlikte "
+        "adım adım ilerlet; her seferinde izin isteme veya aynı sınır cümlelerini tekrarlama. "
+        "Karakter gerçekten istemiyorsa bunu karakterine uygun biçimde söyle. İstekliyse bunu dolaylı "
+        "kaçamaklarla gizleme. Duyguları, tercihleri ve sahnedeki eylemleri tutarlı kıl. "
+        "Klişe romantik monologlar, gereksiz şiirsellik, tekrar eden nefes/göz/parmak tasvirleri "
+        "ve alakasız bahanelerden kaçın. Kısa mesaj gerektiren yerde kısa, sahne gerektiren yerde "
+        "yeterince ayrıntılı yaz. Kullanıcının son mesajına doğrudan cevap ver. "
+        "Yalnızca yetişkinler ve rızaya dayalı kurgu sınırlarında kal; reşit olmayanlar veya rıza "
+        "dışı cinsel içerik üretme."
+    )
     sistem_horde = (
         (baslik + "\n\n" if AI_HORDE_EN_BASLIK else "")
         + sistem_horde_temel + "\n\n" + dogal_sohbet_kilavuzu + ek
         + "\n\n" + NSFW_KURAL
+        + "\n\n" + QWEN_DOGAL_YETISKIN_PROFILI
         + "\n\n" + GEMMA_TURKCE_KILAVUZU
     )
 
