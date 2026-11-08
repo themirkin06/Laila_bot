@@ -106,6 +106,7 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("seviye_foto_gonderildi", {})
     d.setdefault("stil", "hikaye")
     d.setdefault("sahneler", {})
+    d.setdefault("sahne_hafizasi", {})  # karakter bazında kalıcı son sahne notu
     # Yeni ilişki ve dünya alanları: eski Redis kayıtlarına zarar vermeden eklenir.
     d.setdefault("iliski", {})
     d.setdefault("duygular", {})
@@ -543,11 +544,13 @@ async def sahne_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if metin.lower() in ("sifirla", "sıfırla", "otomatik"):
         durum["sahneler"].pop(key, None)
+        durum.setdefault("sahne_hafizasi", {}).pop(key, None)
         await durum_kaydet(user_id)
         await update.message.reply_text("🎬 Sahne yakınlık seviyene göre otomatiğe döndü.")
         return
     metin = metin[:300]
     durum["sahneler"][key] = metin
+    durum.setdefault("sahne_hafizasi", {})[key] = metin
     hafiza_al(durum).append({"role": "assistant", "content": f"*Sahne değişir: {metin}*"})
     await durum_kaydet(user_id)
     await update.message.reply_text(f"🎬 Sahne güncellendi: {metin}")
@@ -684,7 +687,13 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         if ilk_tanisma else
         "[DEVAM EDEN TANIŞIKLIK] Yalnızca bu karakterle bu konuşma hafızasında gerçekten yaşanmış olayları ortak geçmiş olarak kullan. "
     )
-    ekstra_sistem = profil_notu + "\n\n" + tanisma_notu
+    sahne_notu = durum.setdefault("sahne_hafizasi", {}).get(secilen_karakter, "")
+    sahne_devamlilik = (
+        "[SON KAYDEDİLEN SAHNE] " + sahne_notu + "\nKonuşma geçmişinde daha yeni, açık bir geçiş yoksa bu sahne bilgisini koru."
+        if sahne_notu else
+        "[SAHNE HAFIZASI] Ayrı bir sahne notu yok; hikâye ortamını ve son konuşmalardaki eylemleri esas al, sebepsiz yer/iş değişikliği yapma."
+    )
+    ekstra_sistem = profil_notu + "\n\n" + tanisma_notu + "\n\n" + sahne_devamlilik
 
     # Yakınlık puanı (soğuma hesabı için en başta) ve sayaçlar
     eski_sev, yeni_sev = yakinlik_ekle(durum, user_message)

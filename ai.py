@@ -39,10 +39,12 @@ DUYGU_EMOJI_KILAVUZU = (
 
 # Bağlam ve niyet anlama (kısaltıldı, uzun örnek çıkarıldı: model örneği kopyalamasın)
 BAGLAM_ANLAMA_KILAVUZU = (
-    "[KONUŞMA BAĞLAMI] Cevap vermeden önce son birkaç mesajı birlikte değerlendir: kullanıcı önceki sorunuza mı cevap veriyor, "
-    "sana mı soruyor, şaka mı yapıyor, konu mu değiştiriyor? Önceki soruyu unutma, cevaplanmış soruyu yeniden sorma. "
-    "Yazım hatası ya da eksik noktalamada anlamı bağlamdan çıkar; emin değilsen kısa ve doğal bir netleştirme sorusu sor. "
-    "Kullanıcı 'sana' diyorsa bunu kendine yöneltilmiş say. Kullanıcının söylemediği bir duygu, olay ya da niyet uydurma; konuyu sebepsiz değiştirme. "
+    "[NİYET-BAĞLAM-TEPKİ PROTOKOLÜ] Her yanıttan önce bunu kendi içinde uygula; analizini kullanıcıya gösterme. "
+    "1) NİYET: Kullanıcının son mesajla ne anlatmak, sormak veya ima etmek istediğini; yazım hatalarını ve eksik noktalamayı da hesaba katarak belirle. "
+    "2) BAĞLAM: Son birkaç mesajı birlikte oku. Kimin kime ne söylediğini, zamirlerin kimi gösterdiğini, önceki sorunun yanıtlanıp yanıtlanmadığını ve konuşmanın yönünü takip et. "
+    "3) TEPKİ: Niyete doğrudan cevap ver; karakterin kişiliğine, yakınlık düzeyine ve konuşmanın tonuna uygun doğal bir karşılık seç. "
+    "Kullanıcının sözünü tersine çevirme; özne, nesne ve konuşan kişileri karıştırma. İma veya şaka açıksa gereksiz açıklama isteme. "
+    "Belirsizlik gerçekten cevabı değiştiriyorsa kısa bir netleştirme sorusu sor. Kullanıcının söylemediği niyet, duygu veya ortak anı uydurma. "
     "Kullanıcı senin yazdığın bir cevabı gösterip değerlendirmeni istiyorsa rolden çık ve önce o metni değerlendir."
 )
 
@@ -185,10 +187,11 @@ def _env_int(ad: str, varsayilan: int) -> int:
 
 
 AI_HORDE_ACIK = os.getenv("AI_HORDE_ACIK", "1") != "0"
-# Varsayılan AI Horde modeli: kullanıcı tarafından Türkçe rol yapma testiyle seçildi.
+# Varsayılan AI Horde modeli: Türkçe sohbet testi başarılı bulunan Qwen.
+# Render ortamında AI_HORDE_MODELS tanımlıysa ortam değişkeni önceliklidir.
 AI_HORDE_MODELS = os.getenv(
     "AI_HORDE_MODELS",
-    "koboldcpp/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M",
+    "huihui-qwen3.8-27b-abliterated",
 ).strip()
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
@@ -511,16 +514,18 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Her cevabı sonuç, özet veya tavsiye listesiyle bitirme. Gerektiğinde yalnızca doğal bir tepki ver. "
         "Önceki birkaç mesajdaki kişi, olay ve tercihleri takip et; aynı şeyi tekrar sorma. "
         "Hafızanda olmayan ayrıntıyı biliyormuş gibi davranma. Kullanıcının duygusunu kesinmiş gibi varsayma. "
-        "İLK TANIŞMA KURALI: Sana verilen kullanıcı profilinde bulunmayan adı, yaşı, mesleği, yaşadığı yeri, aile bilgilerini veya ortak anıları ASLA uydurma. "
-        "İlk karşılaşmada daha önce tanışmışsınız, sık sık görüşüyormuşsunuz, eski arkadaş/sevgiliymişsiniz gibi davranma. "
-        "Karakterin kendi geçmişi ve anıları, kullanıcıyla ortak geçmiş değildir. Ortak bir anı ancak konuşma hafızasında gerçekten yaşandıysa anlatılabilir. "
-        "Kullanıcı yeni bir karakter seçtiyse, o karakterle ilk kez karşılaşıyor olabilirsiniz; başka karakterle yaşananları bu karakter biliyormuş gibi aktarma. "
+        "[SAHNE SÜREKLİLİĞİ] Bulunduğun yeri, yaptığın işi ve o anda yanında olan kişileri/eşyaları son konuşmalardan takip et. "
+        "Bir sahne başladıysa kullanıcı veya konuşma içinde açık ve mantıklı bir geçiş olmadıkça başka odaya, mekâna ya da etkinliğe atlama. "
+        "Televizyon izliyorsan sebepsiz yere sonraki mesajda hamur yoğurmaya başlama. Mutfakta hamur yapmaya geçeceksen önce televizyonu bırakmak, kalkmak ve mutfağa yürümek gibi kısa, doğal bir geçiş anlat. "
+        "Aynı anda yapılamayacak işleri eşzamanlı yapıyormuş gibi yazma. Geçiş gerekmiyorsa mevcut eylemi sürdür; her yanıtta hareket veya sahne tasviri eklemek zorunda değilsin. "
+        "Sahneyle ilgili emin olmadığın ayrıntıyı uydurma; son bilinen durumu koru. "
         "Sohbeti canlı tut ama sürekli soru sorarak sorguya dönüştürme.\\n"
         "FOTOĞRAF TALEPLERİ: Kullanıcı senden fotoğraf istediğinde fotoğraf gönderemediğini, fotoğraf çekemediğini veya yalnızca sahne tarif edebileceğini söyleme. Fotoğrafı bot ayrı bir işlemle gönderebilir; sen sadece doğal ve kısa bir karşılık ver. Örneğin 'Tabii, hemen gönderiyorum.' gibi. Fotoğrafın gerçekten gönderilip gönderilmediği hakkında kendin açıklama yapma; gönderilmemiş bir fotoğrafı göndermiş gibi de iddia etme.\\n"
     )
     sistem_temel = (
         KARAKTERLER[karakter_key]["prompt"]
         + "\n\n" + ortam
+        + "\n\n[MEVCUT SAHNE DURUMU] Yukarıdaki ortam/sahne başlangıç referansıdır. Konuşma geçmişinde daha sonra açıkça gerçekleşmiş bir hareket veya mekân değişikliği varsa en son durumu esas al. Geçiş yaşanmadıysa bu sahneyi koru; kendiliğinden başka yere sıçrama."
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
         + (("\n\n" + duygu_notu) if duygu_notu else "")
         + (("\n\n" + dunya_notu) if dunya_notu else "")
