@@ -48,33 +48,6 @@ try:
 except ValueError:
     LLM_SICAKLIK = None
 
-# --- SES AYARLARI ---
-# Ses çıkışı (TTS): edge-tts paketi kuruluysa açılır (requirements.txt'ye `edge-tts` ekle).
-# Ses girişi (STT): GROQ_API_KEY varsa açılır (Groq'un ücretsiz Whisper'ı).
-try:
-    import edge_tts
-except Exception:  # paket kurulu değilse ses özelliği sessizce kapalı kalır
-    edge_tts = None
-
-TTS_AKTIF = edge_tts is not None and os.getenv("SES_ACIK", "1") != "0"
-GROQ_KEY = os.getenv("GROQ_API_KEY", "").strip()
-SES_YAZIYI_GOSTER = True      # sesli mesajının metne çevrilmiş halini göster (doğru anlıyor mu diye)
-SES_MAX_SANIYE = 90           # bundan uzun sesli mesajlar işlenmez
-PROAKTIF_SES_ORANLARI = [0.0, 0.1, 0.25, 0.4]  # kendiliğinden mesajın sesli olma ihtimali (yakınlık seviyesine göre)
-
-# Edge TTS'te Türkçe kadın sesi tek (Emel). Karakterleri hız ve ton farkıyla ayırıyoruz.
-TR_SES = "tr-TR-EmelNeural"
-SES_AYARLARI = {
-    "leyla": (TR_SES, "-10%", "-2Hz"),
-    "merve": (TR_SES, "+10%", "+4Hz"),
-    "asli": (TR_SES, "+0%", "-3Hz"),
-    "dilek": (TR_SES, "-5%", "+0Hz"),
-    "ece": (TR_SES, "-8%", "+1Hz"),
-    "ayse": (TR_SES, "-5%", "-5Hz"),
-    "dondu": (TR_SES, "-3%", "-6Hz"),
-}
-SES_MODLARI = ["Kapalı", "Sesli mesaj atarsan sesle cevap verir", "Her zaman sesli cevap verir"]
-
 # --- NSFW DURUMU ---
 # Test için tüm karakterlerde açık. İstenirse Render'dan NSFW_STATUS=KAPALI yapılarak kapatılabilir.
 nsfw_status = os.getenv("NSFW_STATUS", "AÇIK").strip().upper()

@@ -1,8 +1,6 @@
 import os
 import re
 import json
-import base64
-import uuid
 import html
 import time
 import random
@@ -65,6 +63,7 @@ BAGLAM_ANLAMA_KILAVUZU = (
 # --- EMOJİ ---
 # Varsayılan: açık. Kapatmak için Render'a EMOJI_ACIK=0 ekle.
 EMOJI_KULLAN = os.getenv("EMOJI_ACIK", "1") == "1"
+EMOJI_KALIBI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200d]+")
 EMOJI_KAPALI_KURAL = "[EMOJİ] Emoji ve emoticon kullanma; duyguyu kelimelerle ve (varsa) yıldız içindeki hareketle göster."
 EMOJI_KAPALI_6 = "6. Emoji kullanma; duyguyu kelimelerle ve (varsa) yıldız içindeki hareketle göster."
 
@@ -647,7 +646,6 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("son_proaktif_foto", 0)
     # Her yakınlık seviyesi için en fazla bir otomatik kutlama fotoğrafı gönderilir.
     d.setdefault("seviye_foto_gonderildi", {})
-    d.setdefault("ses_modu", 1)
     d.setdefault("stil", "hikaye")
     d.setdefault("sahneler", {})
     # Yeni ilişki ve dünya alanları: eski Redis kayıtlarına zarar vermeden eklenir.
@@ -1322,84 +1320,8 @@ async def foto_gonder(
     await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
 
 
-# --- SES: metinden sese (Edge TTS) ve sesten metne (Groq Whisper) ---
-EMOJI_KALIBI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200d]+")
-
-
-def ses_metni(cevap: str) -> str:
-    """Konuşulacak metni temizler: emojileri ve ||| işaretini kaldırır."""
-    parcalar = []
-    for parca in cevap.split("|||"):
-        parca = re.sub(r"\*[^*]*\*", " ", parca)  # *hareketler* sesli okunmaz
-        parca = re.sub(r"\s+", " ", EMOJI_KALIBI.sub("", parca)).strip()
-        if parca:
-            parcalar.append(parca if parca[-1] in ".!?…" else parca + ".")
-    return " ".join(parcalar)[:600]
-
-
-async def ses_uret(key: str, metin: str) -> bytes:
-    voice, rate, pitch = SES_AYARLARI[key]
-    iletisim = edge_tts.Communicate(metin, voice, rate=rate, pitch=pitch)
-    veri = bytearray()
-    async for parca in iletisim.stream():
-        if parca["type"] == "audio":
-            veri.extend(parca["data"])
-    if not veri:
-        raise RuntimeError("Ses üretilemedi (boş yanıt)")
-    return bytes(veri)
-
-
-def multipart_hazirla(alanlar: dict, dosya_adi: str, icerik: bytes, tip: str):
-    sinir = uuid.uuid4().hex
-    parcalar = []
-    for ad, deger in alanlar.items():
-        parcalar.append(
-            f'--{sinir}\r\nContent-Disposition: form-data; name="{ad}"\r\n\r\n{deger}\r\n'.encode("utf-8")
-        )
-    parcalar.append(
-        (f'--{sinir}\r\nContent-Disposition: form-data; name="file"; filename="{dosya_adi}"\r\n'
-         f"Content-Type: {tip}\r\n\r\n").encode("utf-8") + icerik + b"\r\n"
-    )
-    parcalar.append(f"--{sinir}--\r\n".encode("utf-8"))
-    return sinir, b"".join(parcalar)
-
-
-def groq_cevir_sync(ses: bytes) -> str:
-    sinir, govde = multipart_hazirla(
-        {"model": "whisper-large-v3-turbo", "language": "tr", "response_format": "json"},
-        "ses.ogg", ses, "audio/ogg",
-    )
-    req = urllib.request.Request(
-        "https://api.groq.com/openai/v1/audio/transcriptions",
-        data=govde,
-        headers={
-            "Authorization": f"Bearer {GROQ_KEY}",
-            "Content-Type": f"multipart/form-data; boundary={sinir}",
-            "User-Agent": "Mozilla/5.0",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return (json.loads(r.read().decode("utf-8")).get("text") or "").strip()
-
-
-def ses_istendi_mi(durum: dict, sesli_girdi: bool) -> bool:
-    mod = durum.get("ses_modu", 1)
-    return mod == 2 or (mod == 1 and sesli_girdi)
-
-
-async def cevabi_ilet(bot, chat_id: int, key: str, dusunce: str, cevap: str, sesle: bool = False):
-    """Cevabı sesli mesaj ya da yazı olarak gönderir. Ses başarısız olursa yazıya döner."""
-    if sesle and TTS_AKTIF:
-        metin = ses_metni(cevap)
-        if metin:
-            try:
-                await bot.send_chat_action(chat_id=chat_id, action="record_voice")
-                veri = await asyncio.wait_for(ses_uret(key, metin), timeout=40)
-                await bot.send_voice(chat_id=chat_id, voice=veri)
-                return
-            except Exception as e:
-                logging.warning(f"Sesli cevap gönderilemedi, yazıya dönülüyor: {e}")
+async def cevabi_ilet(bot, chat_id: int, dusunce: str, cevap: str):
+    """Karakter yanıtını normal Telegram mesajı olarak gönderir."""
     await mesajlari_gonder(bot, chat_id, dusunce, cevap)
 
 
@@ -1696,7 +1618,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- Mesajları Yakalama ---
-async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str, sesli_girdi: bool = False):
+async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str):
     if not yetkili_mi(update):
         return
 
@@ -1727,10 +1649,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
             stil=durum.get("stil", "hikaye"),
             sahne=durum["sahneler"].get(secilen_karakter),
         )
-        await cevabi_ilet(
-            context.bot, chat_id, secilen_karakter, dusunce, cevap,
-            sesle=ses_istendi_mi(durum, sesli_girdi),
-        )
+        await cevabi_ilet(context.bot, chat_id, dusunce, cevap)
 
         hafiza.append({"role": "user", "content": user_message})
         hafiza.append({"role": "assistant", "content": hafiza_kaydi(dusunce, cevap)})
@@ -1798,54 +1717,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await mesaji_isle(update, context, update.message.text)
 
 
-async def ses_isle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gelen sesli mesajı yazıya çevirir ve normal mesaj gibi işler."""
-    if not yetkili_mi(update):
-        return
-    if update.effective_user.id not in kullanici_durumu:
-        await update.message.reply_text("Lütfen önce /start yazarak bir karakter seç.")
-        return
-    if not GROQ_KEY:
-        await update.message.reply_text("Sesli mesajı anlamam için GROQ_API_KEY ayarı gerekiyor. Şimdilik yazarak konuşalım 🙂")
-        return
-    if update.message.voice.duration and update.message.voice.duration > SES_MAX_SANIYE:
-        await update.message.reply_text("Bu ses biraz uzun oldu, daha kısa söyler misin?")
-        return
-
-    chat_id = update.effective_chat.id
-    try:
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        dosya = await update.message.voice.get_file()
-        ses = bytes(await dosya.download_as_bytearray())
-        metin = await asyncio.to_thread(groq_cevir_sync, ses)
-    except Exception as e:
-        logging.error(f"Ses çözme hatası: {e}")
-        await update.message.reply_text("Sesini anlayamadım, tekrar söyler misin?")
-        return
-    if not metin:
-        await update.message.reply_text("Sesini anlayamadım, tekrar söyler misin?")
-        return
-
-    if SES_YAZIYI_GOSTER:
-        await update.message.reply_text(f"🎙️ {metin}")
-    await mesaji_isle(update, context, metin, sesli_girdi=True)
-
-
-async def ses_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/ses: ses modunu değiştirir (kapalı -> sesle gelince sesle -> hep sesli)."""
-    if not yetkili_mi(update):
-        return
-    user_id = update.effective_user.id
-    durum = kullanici_durumu.get(user_id)
-    if not durum:
-        await update.message.reply_text("Önce /start ile bir karakter seç.")
-        return
-    durum["ses_modu"] = (durum.get("ses_modu", 1) + 1) % 3
-    await durum_kaydet(user_id)
-    uyari = "" if TTS_AKTIF else "\n(Dikkat: ses üretimi şu an kapalı, edge-tts kurulu değil.)"
-    await update.message.reply_text(f"🔊 Ses modu: {SES_MODLARI[durum['ses_modu']]}{uyari}")
-
-
 # --- KENDİLİĞİNDEN MESAJ ATMA ---
 async def proaktif_kontrol(app):
     simdi = datetime.now(TZ)
@@ -1902,10 +1773,7 @@ async def proaktif_kontrol(app):
                 stil=d.get("stil", "hikaye"),
                 sahne=d["sahneler"].get(karakter_key),
             )
-            ses_atsin = TTS_AKTIF and d.get("ses_modu", 1) != 0 and (
-                d.get("ses_modu", 1) == 2 or random.random() < PROAKTIF_SES_ORANLARI[sev]
-            )
-            await cevabi_ilet(app.bot, chat_id, karakter_key, dusunce, cevap, sesle=ses_atsin)
+            await cevabi_ilet(app.bot, chat_id, dusunce, cevap)
             if foto_atsin:
                 try:
                     await foto_gonder(app.bot, chat_id, karakter, yakinlik=sev)
@@ -1959,8 +1827,6 @@ async def post_init(app):
     logging.info("Emoji: " + ("açık." if EMOJI_KULLAN else "kapalı."))
     logging.info("NSFW durumu: " + ("AÇIK (tüm karakterler)." if NSFW_ACIK else "KAPALI."))
     logging.info("Türkçe düzeltme geçişi: " + ("açık." if TURKCE_DUZELT else "kapalı."))
-    logging.info("Ses çıkışı (edge-tts): " + ("açık." if TTS_AKTIF else "kapalı (paket kurulu değil ya da SES_ACIK=0)."))
-    logging.info("Ses girişi (Groq): " + ("açık." if GROQ_KEY else "kapalı (GROQ_API_KEY yok)."))
 
     if PROAKTIF_ACIK:
         app.bot_data["proaktif_task"] = asyncio.create_task(proaktif_dongu(app))
@@ -1980,11 +1846,9 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("karakter", start_command))
     application.add_handler(CommandHandler("sifirla", sifirla_command))
-    application.add_handler(CommandHandler("ses", ses_command))
     application.add_handler(CommandHandler("stil", stil_command))
     application.add_handler(CommandHandler("hikaye", hikaye_command))
     application.add_handler(CommandHandler("sahne", sahne_command))
-    application.add_handler(MessageHandler(filters.VOICE, ses_isle))
     application.add_handler(CommandHandler("yakinlik", yakinlik_command))
     application.add_handler(CommandHandler("uret", uret_command))
     application.add_handler(CommandHandler("havuzdoldur", havuzdoldur_command))
