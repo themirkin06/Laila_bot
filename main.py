@@ -130,6 +130,8 @@ def yeni_durum(karakter: str, chat_id: int) -> dict:
 FOTO_HAVUZU = {k: [] for k in KARAKTERLER}
 son_havuz_foto = {}
 HAVUZ_ANAHTARI = "bot:havuz"
+YUZ_REFERANS_ANAHTARI = "bot:yuz_referanslari"
+YUZ_REFERANSLARI = {k: None for k in KARAKTERLER}
 FOTO_ALTYAZILARI = ["Al bakalım 🙂", "İşte buradayım 😊", "Şu an böyleyim işte 😅", "Beğendin mi? 🙈", "Hadi bakalım 📸"]
 
 
@@ -233,7 +235,7 @@ async def foto_gonder(
     bot, chat_id: int, karakter: dict, caption: str = None,
     yakinlik: int = 0, havuzdan: bool = True, surpriz: bool = False
 ):
-    """Havuzdan veya mevcut görsel sağlayıcısından, ilişki seviyesine uygun fotoğraf gönderir."""
+    """Önce havuzu kullanır; yeni üretimde karakterin kayıtlı yüz referansını uygular."""
     key = karakter["key"]
     await bot.send_chat_action(chat_id=chat_id, action="upload_photo")
 
@@ -248,9 +250,21 @@ async def foto_gonder(
         except Exception as e:
             logging.warning(f"Havuz fotoğrafı gönderilemedi, üretilecek: {e}")
 
-    foto_bytes = await foto_uret_bytes(karakter, random.randint(1, 999999), yakinlik=yakinlik, surpriz=surpriz)
-    await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
+    reference_bytes = None
+    # Açıkça yüz referansı kaydedilmediyse mevcut havuzdaki ilk fotoğrafı kimlik referansı kullan.
+    reference_file_id = YUZ_REFERANSLARI.get(key) or (FOTO_HAVUZU.get(key) or [None])[0]
+    if reference_file_id:
+        try:
+            telegram_file = await bot.get_file(reference_file_id)
+            reference_bytes = bytes(await telegram_file.download_as_bytearray())
+        except Exception as e:
+            logging.warning(f"{KARAKTERLER[key]['isim']} yüz referansı indirilemedi: {e}")
 
+    foto_bytes = await foto_uret_bytes(
+        karakter, random.randint(1, 999999), yakinlik=yakinlik,
+        surpriz=surpriz, reference_image=reference_bytes,
+    )
+    await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
 
 async def cevabi_ilet(bot, chat_id: int, dusunce: str, cevap: str):
     """Karakter yanıtını normal Telegram mesajı olarak gönderir."""
@@ -380,7 +394,15 @@ async def aday_gonder(bot, chat_id: int, key: str):
     """Aday fotoğraf üretir, altına Havuza ekle / At butonları koyar."""
     karakter = KARAKTERLER[key]
     await bot.send_chat_action(chat_id=chat_id, action="upload_photo")
-    foto = await foto_uret_bytes(karakter, random.randint(1, 999999))
+    ref_file_id = YUZ_REFERANSLARI.get(key) or (FOTO_HAVUZU.get(key) or [None])[0]
+    ref_bytes = None
+    if ref_file_id:
+        try:
+            tg_file = await bot.get_file(ref_file_id)
+            ref_bytes = bytes(await tg_file.download_as_bytearray())
+        except Exception as e:
+            logging.warning(f"Aday fotoğraf için yüz referansı indirilemedi: {e}")
+    foto = await foto_uret_bytes(karakter, random.randint(1, 999999), reference_image=ref_bytes)
     klavye = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Havuza ekle", callback_data=f"havuz_ekle_{key}"),
         InlineKeyboardButton("❌ At", callback_data="havuz_at"),
@@ -438,7 +460,7 @@ async def havuz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     satirlar = ["📸 Fotoğraf havuzu\n"]
     for key, k in KARAKTERLER.items():
         satirlar.append(f"{k['isim']}: {len(FOTO_HAVUZU.get(key, []))} fotoğraf")
-    satirlar.append("\nTek aday için /uret, birkaç aday için /havuzdoldur 5 yaz. Kendi fotoğrafını eklemek için bota fotoğraf gönder (altyazıya karakter adını yazabilirsin).")
+    satirlar.append("\nTek aday için /uret, birkaç aday için /havuzdoldur 5 yaz. Yüz referansı kaydetmek için net bir karakter fotoğrafını 'yuzref leyla' gibi bir altyazıyla gönder.")
     await update.message.reply_text("\n".join(satirlar))
 
 
@@ -456,17 +478,44 @@ async def havuzsil_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Bota gönderdiğin fotoğrafı havuza ekler."""
+    """Fotoğrafı havuza ekler; 'yuzref karakter' altyazısıyla yüz referansı kaydeder."""
     if not yetkili_mi(update):
         return
     ad = (update.message.caption or "").strip().lower().translate(str.maketrans("şıöüçğ", "sioucg"))
     durum = kullanici_durumu.get(update.effective_user.id)
+
+    if ad.startswith("yuzref "):
+        key = ad.split(maxsplit=1)[1].strip()
+        if key not in KARAKTERLER:
+            await update.message.reply_text("Karakter kodunu tanıyamadım. Örnek: yuzref leyla, yuzref merve, yuzref ayse.")
+            return
+        uygun = [p for p in update.message.photo if max(p.width, p.height) <= 512]
+        if not uygun:
+            await update.message.reply_text("Bu fotoğrafın 512 pikselden küçük bir sürümü bulunamadı.")
+            return
+        referans = max(uygun, key=lambda p: p.width * p.height)
+        YUZ_REFERANSLARI[key] = referans.file_id
+        if DB_AKTIF:
+            try:
+                await asyncio.to_thread(
+                    redis_komut, "SET", YUZ_REFERANS_ANAHTARI,
+                    json.dumps(YUZ_REFERANSLARI, ensure_ascii=False)
+                )
+            except Exception as e:
+                logging.error(f"Yüz referansı Redis'e kaydedilemedi: {e}")
+                await update.message.reply_text("Referans bu oturumda kaydedildi ama kalıcı kayıtta hata oldu.")
+                return
+        await update.message.reply_text(
+            f"✅ {KARAKTERLER[key]['isim']} için yüz referansı kaydedildi. Yeni üretilen fotoğraflarda bu yüzü temel alacağım."
+        )
+        return
+
     if ad in KARAKTERLER:
         key = ad
     elif durum:
         key = durum["karakter"]
     else:
-        await update.message.reply_text("Hangi karakter için? Altyazıya adını yaz (örn. leyla) ya da önce /start ile karakter seç.")
+        await update.message.reply_text("Hangi karakter için? Altyazıya karakter adını yaz (örn. leyla) ya da önce /start ile karakter seç.")
         return
     file_id = update.message.photo[-1].file_id
     if file_id not in FOTO_HAVUZU[key]:
@@ -671,6 +720,25 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
     hafiza = hafiza_al(durum)
     karakter = KARAKTERLER[secilen_karakter]
 
+    # Açık fotoğraf isteğinde sohbet modelini bekletmeden doğrudan fotoğraf gönder.
+    if foto_istegi_mi(user_message):
+        durum["chat_id"] = chat_id
+        durum["cevapsiz"] = 0
+        durum["son_etkilesim"] = time.time()
+        esik_belirle(durum)
+        try:
+            await foto_gonder(
+                context.bot, chat_id, karakter,
+                caption=(random.choice(FOTO_ALTYAZILARI) if EMOJI_KULLAN else emoji_temizle(random.choice(FOTO_ALTYAZILARI))),
+                yakinlik=yakinlik_seviyesi(yakinlik_puani(durum, secilen_karakter)),
+                havuzdan=False,
+            )
+        except Exception as img_error:
+            logging.error(f"Görsel isteği hatası: {img_error}")
+            await update.message.reply_text("Şu an fotoğrafı hazırlayamadım; biraz sonra tekrar deneyelim.")
+        await durum_kaydet(user_id)
+        return
+
     # Kullanıcının açıkça söylediği ad/yaş bilgilerini karakterlerden bağımsız sakla.
     kullanici_bilgisi_ogren(durum, user_message)
     profil_notu = kullanici_profili_prompt(
@@ -765,17 +833,6 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         await update.message.reply_text("Şu an biraz dalgınım, tekrar dener misin? 😅")
         return
 
-    # --- FOTOĞRAF İSTEĞİ ---
-    if foto_istegi_mi(user_message):
-        try:
-            await foto_gonder(
-                context.bot, chat_id, karakter,
-                caption=(random.choice(FOTO_ALTYAZILARI) if EMOJI_KULLAN else emoji_temizle(random.choice(FOTO_ALTYAZILARI))),
-                yakinlik=yakinlik_seviyesi(yakinlik_puani(durum, secilen_karakter)),
-            )
-        except Exception as img_error:
-            logging.error(f"Görsel hatası: {img_error}")
-            await update.message.reply_text("Kameramda bir sorun var sanırım, sonra tekrar dener misin?")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -793,6 +850,13 @@ async def post_init(app):
                 if k in FOTO_HAVUZU:
                     FOTO_HAVUZU[k] = list(liste)
             logging.info("Fotoğraf havuzu yüklendi: " + ", ".join(f"{k}={len(v)}" for k, v in FOTO_HAVUZU.items()))
+            yuz_ref = await asyncio.to_thread(redis_komut, "GET", YUZ_REFERANS_ANAHTARI)
+            if yuz_ref:
+                kayitli_ref = json.loads(yuz_ref)
+                for k, file_id in kayitli_ref.items():
+                    if k in YUZ_REFERANSLARI:
+                        YUZ_REFERANSLARI[k] = file_id
+            logging.info("Yüz referansları yüklendi: " + ", ".join(k for k, v in YUZ_REFERANSLARI.items() if v))
         except Exception as e:
             logging.error(f"Hafıza yüklenemedi (RAM ile devam): {e}")
     else:
