@@ -195,7 +195,7 @@ FOTO_STIL = (
     "natural skin texture, soft natural light, shallow depth of field, unretouched, realistic"
 )
 FOTO_KISI = {
-    "leyla": "a 38-year-old Turkish woman with a smooth, youthful face, natural skin, warm brown eyes, wearing a pastel pink hijab, slightly full figure",
+    "leyla": "a 42-year-old Turkish woman with a mature, warm face, natural skin, warm brown eyes, wearing a pastel pink hijab, slightly full figure",
     "merve": "a 26-year-old Turkish woman with a bright playful smile, expressive eyes and long chestnut-brown hair",
     "asli": "a 30-year-old Turkish woman with a confident smile, defined facial features and straight dark hair",
     "dilek": "a 35-year-old Turkish woman with a warm smile, glasses and shoulder-length dark hair",
@@ -211,6 +211,13 @@ FOTO_SAHNELER = {
     "ayse": ["in a garden full of plants", "in a bright kitchen", "on a house front step", "at a neighborhood market"],
 }
 
+FOTO_KISI["dondu"] = "a 43-year-old Turkish woman with strong features, amber-colored eyes and long dark wavy hair"
+FOTO_SAHNELER["dondu"] = [
+    "at the edge of a misty pine forest at dusk",
+    "beside a stone fireplace in a mountain cabin",
+    "on a hilltop under a pale full moon",
+    "walking along a forest path at dawn",
+]
 
 FOTO_YAKINLIK_STILLERI = {
     0: (

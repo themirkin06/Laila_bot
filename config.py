@@ -3,6 +3,7 @@ import os
 import random
 import re
 from datetime import datetime, timezone, timedelta
+from pollinations import Pollinations
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 client = Pollinations(api_key=os.getenv("POLLINATIONS_API_KEY"))
