@@ -185,11 +185,10 @@ def _env_int(ad: str, varsayilan: int) -> int:
 
 
 AI_HORDE_ACIK = os.getenv("AI_HORDE_ACIK", "1") != "0"
-# Varsayılan AI Horde modeli: Türkçe sohbet testi başarılı bulunan Qwen.
-# Render ortamında AI_HORDE_MODELS tanımlıysa ortam değişkeni önceliklidir.
+# Varsayılan AI Horde modeli: kullanıcı tarafından Türkçe rol yapma testiyle seçildi.
 AI_HORDE_MODELS = os.getenv(
     "AI_HORDE_MODELS",
-    "huihui-qwen3.8-27b-abliterated",
+    "koboldcpp/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M",
 ).strip()
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
@@ -512,6 +511,10 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Her cevabı sonuç, özet veya tavsiye listesiyle bitirme. Gerektiğinde yalnızca doğal bir tepki ver. "
         "Önceki birkaç mesajdaki kişi, olay ve tercihleri takip et; aynı şeyi tekrar sorma. "
         "Hafızanda olmayan ayrıntıyı biliyormuş gibi davranma. Kullanıcının duygusunu kesinmiş gibi varsayma. "
+        "İLK TANIŞMA KURALI: Sana verilen kullanıcı profilinde bulunmayan adı, yaşı, mesleği, yaşadığı yeri, aile bilgilerini veya ortak anıları ASLA uydurma. "
+        "İlk karşılaşmada daha önce tanışmışsınız, sık sık görüşüyormuşsunuz, eski arkadaş/sevgiliymişsiniz gibi davranma. "
+        "Karakterin kendi geçmişi ve anıları, kullanıcıyla ortak geçmiş değildir. Ortak bir anı ancak konuşma hafızasında gerçekten yaşandıysa anlatılabilir. "
+        "Kullanıcı yeni bir karakter seçtiyse, o karakterle ilk kez karşılaşıyor olabilirsiniz; başka karakterle yaşananları bu karakter biliyormuş gibi aktarma. "
         "Sohbeti canlı tut ama sürekli soru sorarak sorguya dönüştürme.\\n"
         "FOTOĞRAF TALEPLERİ: Kullanıcı senden fotoğraf istediğinde fotoğraf gönderemediğini, fotoğraf çekemediğini veya yalnızca sahne tarif edebileceğini söyleme. Fotoğrafı bot ayrı bir işlemle gönderebilir; sen sadece doğal ve kısa bir karşılık ver. Örneğin 'Tabii, hemen gönderiyorum.' gibi. Fotoğrafın gerçekten gönderilip gönderilmediği hakkında kendin açıklama yapma; gönderilmemiş bir fotoğrafı göndermiş gibi de iddia etme.\\n"
     )

@@ -94,6 +94,8 @@ def durum_tamamla(d: dict) -> dict:
     """Eksik alanları doldurur (eski kayıtlarla uyumluluk için)."""
     d.setdefault("karakter", "leyla")
     d.setdefault("hafizalar", {})
+    d.setdefault("kullanici_profili", {"ad": "", "yas": None, "bilgiler": []})
+    d.setdefault("tanismalar", {})
     d.setdefault("chat_id", None)
     d.setdefault("son_etkilesim", time.time())
     d.setdefault("cevapsiz", 0)
@@ -284,16 +286,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Önce karakterleri keşfet, sonra tanışmak istediğini seç."
     )
     klavye = InlineKeyboardMarkup([[InlineKeyboardButton("✨ Karakterleri keşfet", callback_data="gal_0")]])
-    # Önceki karşılama mesajı varsa temizle; yeni mesajın kimliğini sakla.
-    eski_start = context.user_data.pop("laila_start_mesaj_id", None)
-    if eski_start:
-        try:
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=eski_start)
-        except Exception as exc:
-            logging.debug("Eski start mesajı silinemedi: %s", exc)
     # Bu mesajda Markdown kullanmıyoruz; Telegram entity ayrıştırma hatasını önler.
-    gonderilen = await update.effective_message.reply_text(metin, reply_markup=klavye)
-    context.user_data["laila_start_mesaj_id"] = gonderilen.message_id
+    await update.effective_message.reply_text(metin, reply_markup=klavye)
 
 async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sayfa: int):
     """Her sayfada iki karakter gösterir; sayfa değişince önceki galeri temizlenir."""
@@ -615,27 +609,27 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             metin = f"{karakter_adi} ile kaldığınız yerden devam ediyorsun. Hadi bir şeyler yaz..."
         else:
             metin = f"Harika! Şu an {karakter_adi} ile konuşuyorsun. Hadi bir şeyler yaz..."
-
-        # Karakter seçilince galeri fotoğraflarını, galeri menüsünü ve start kartını temizle.
-        temizlenecekler = list(context.user_data.pop("laila_galeri_mesaj_idleri", []))
-        start_id = context.user_data.pop("laila_start_mesaj_id", None)
-        if start_id:
-            temizlenecekler.append(start_id)
-        if query.message:
-            temizlenecekler.append(query.message.message_id)
-        for mesaj_id in dict.fromkeys(temizlenecekler):
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=mesaj_id)
-            except Exception as exc:
-                logging.debug("Karakter seçimi sırasında eski menü silinemedi (%s): %s", mesaj_id, exc)
-
-        await context.bot.send_message(chat_id=chat_id, text=metin)
+        if query.message and query.message.photo:
+            await query.edit_message_caption(caption=metin)
+        else:
+            await query.edit_message_text(text=metin)
         await durum_kaydet(user_id)
 
         # Hikâye modunda ilk kez konuşuluyorsa sahne girişi gönderilir
         durum_s = kullanici_durumu[user_id]
         if durum_s.get("stil", "hikaye") == "hikaye" and not hafiza_al(durum_s):
-            giris = HIKAYE[secilen_karakter]["giris"]
+            # Eski giriş metinleri bazı karakterlerde kullanıcıyı önceden tanıyormuş gibi başlıyordu.
+            # İlk karşılaşmada bu varsayımı kaldırıp karaktere uygun, tarafsız bir selamlama kullan.
+            ilk_girisler = {
+                "leyla": "*Kitapçının kapısındaki küçük çan çalar. Tezgâhın ardından başını kaldırıp gülümser.* Merhaba. Ben Leyla. Daha önce karşılaşmadık sanırım. Sana nasıl hitap edeyim?",
+                "merve": "*Kafede masasından başını kaldırıp sana bakar.* Selam, ben Merve. Sanırım daha önce tanışmadık. Senin adın ne?",
+                "asli": "*Toplantı odasının önünde elindeki dosyaları düzeltip sana döner.* Merhaba, ben Aslı. Sanırım tanışmıyoruz. Adını öğrenebilir miyim?",
+                "dilek": "*Apartman bahçesinde çiçekleri sularken sana gülümser.* Merhaba, ben Dilek. Seni daha önce görmedim galiba. Adın ne?",
+                "ece": "*Kitabını kapatıp merakla sana bakar.* Merhaba, ben Ece. Daha önce tanıştık mı, hatırlayamadım. Adın ne?",
+                "ayse": "*Mutfaktan elinde çay bardağıyla çıkar, sıcakça gülümser.* Hoş geldin kuzum. Ben Ayşe. Senin adın ne bakalım?",
+                "dondu": "*Ocağın ateşi çıtırdarken kehribar gözleriyle sana bakar.* Yeni gelen sensin demek. Ben Asena. Önce adını öğreneyim.",
+            }
+            giris = ilk_girisler.get(secilen_karakter, f"Merhaba, ben {karakter_adi}. Sanırım daha önce tanışmadık. Sana nasıl hitap edeyim?")
             await mesajlari_gonder(context.bot, chat_id, "", giris)
             hafiza_al(durum_s).append({"role": "assistant", "content": giris})
             await durum_kaydet(user_id)
@@ -674,6 +668,24 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
     hafiza = hafiza_al(durum)
     karakter = KARAKTERLER[secilen_karakter]
 
+    # Kullanıcının açıkça söylediği ad/yaş bilgilerini karakterlerden bağımsız sakla.
+    kullanici_bilgisi_ogren(durum, user_message)
+    profil_notu = kullanici_profili_prompt(
+        durum, getattr(update.effective_user, "first_name", "") or ""
+    )
+    # İlk karşılama bot tarafından hafızaya yazılır; gerçek tanışma, kullanıcı ilk mesajını gönderince başlar.
+    ilk_tanisma = not any(m.get("role") == "user" for m in hafiza)
+    durum.setdefault("tanismalar", {})
+    if ilk_tanisma:
+        durum["tanismalar"][secilen_karakter] = True
+    tanisma_notu = (
+        "[İLK KARŞILAŞMA] Bu kullanıcıyla ilk kez karşılaşıyorsun. Önceden tanışıklık, ortak anı veya yakınlık varmış gibi konuşma. "
+        "Kısa ve doğal bir tanışma yap; adını bilmiyorsan nasıl hitap etmeni istediğini sor. Yaşını bilmiyorsun; gerekirse sohbet ilerleyince öğren. "
+        if ilk_tanisma else
+        "[DEVAM EDEN TANIŞIKLIK] Yalnızca bu karakterle bu konuşma hafızasında gerçekten yaşanmış olayları ortak geçmiş olarak kullan. "
+    )
+    ekstra_sistem = profil_notu + "\n\n" + tanisma_notu
+
     # Yakınlık puanı (soğuma hesabı için en başta) ve sayaçlar
     eski_sev, yeni_sev = yakinlik_ekle(durum, user_message)
     duygu_guncelle(durum, secilen_karakter, user_message)
@@ -691,6 +703,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
             sahne=durum["sahneler"].get(secilen_karakter),
             duygu_notu=duygu_ozeti(durum, secilen_karakter),
             dunya_notu=dunya_ozeti(durum, secilen_karakter),
+            ekstra_sistem=ekstra_sistem,
         )
         await cevabi_ilet(context.bot, chat_id, dusunce, cevap)
 

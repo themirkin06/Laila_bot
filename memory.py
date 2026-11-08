@@ -83,6 +83,63 @@ def hafizayi_kirp(hafiza: list):
         hafiza[:] = hafiza[-HAFIZA_LIMITI:]
 
 
+
+def kullanici_profili_al(durum: dict) -> dict:
+    """Kullanıcının kendi söylediği bilgileri karakterlerden bağımsız saklar."""
+    profil = durum.setdefault("kullanici_profili", {})
+    if not isinstance(profil, dict):
+        profil = {}
+        durum["kullanici_profili"] = profil
+    profil.setdefault("ad", "")
+    profil.setdefault("yas", None)
+    profil.setdefault("bilgiler", [])
+    return profil
+
+
+def kullanici_bilgisi_ogren(durum: dict, mesaj: str):
+    """Yalnızca açık öz tanıtımlardan ad/yaş yakalar; tahmin yürütmez."""
+    import re
+
+    profil = kullanici_profili_al(durum)
+    metin = str(mesaj or "").strip()
+
+    ad_eslesme = re.search(
+        r"\b(?:benim adım|adım|ismim|ben)\s+([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)?)\b",
+        metin, re.IGNORECASE,
+    )
+    if ad_eslesme:
+        aday = ad_eslesme.group(1).strip()
+        if aday.lower() not in {"iyiyim", "bilmiyorum", "buradayım", "geldim", "sadece"}:
+            profil["ad"] = aday
+
+    yas_eslesme = re.search(r"\b(?:ben\s+)?(\d{1,2})\s+yaş(?:ındayım|ındayım|ındayim|im)?\b|\byaşım\s+(\d{1,2})\b", metin, re.IGNORECASE)
+    if yas_eslesme:
+        sayi = next((x for x in yas_eslesme.groups() if x), None)
+        if sayi:
+            yas = int(sayi)
+            if 18 <= yas <= 100:
+                profil["yas"] = yas
+
+    return profil
+
+
+def kullanici_profili_prompt(durum: dict, telegram_adi: str = "") -> str:
+    """Modele doğrulanmış kullanıcı bilgisini ve bilinmeyenleri bildirir."""
+    profil = kullanici_profili_al(durum)
+    ad = profil.get("ad") or "henüz öğrenilmedi"
+    yas = profil.get("yas") or "henüz öğrenilmedi"
+    gorunen_ad = telegram_adi.strip() or "yok"
+    return (
+        "[KULLANICI PROFİLİ — GERÇEK BİLGİLER]\n"
+        f"Kullanıcının açıkça söylediği tercih ettiği ad: {ad}. Yaş: {yas}. "
+        f"Telegram görünen adı: {gorunen_ad} (bu, tercih ettiği ad olduğu anlamına gelmez).\n"
+        "Bu alanlarda 'henüz öğrenilmedi' yazıyorsa tahmin etme veya uydurma. "
+        "Kullanıcıyı doğal sohbet içinde tanımaya çalış; adını bilmiyorsan nasıl hitap etmeni istediğini sor. "
+        "Yaşını yalnızca sohbetin akışına uygunsa sor; sorguya çevirme. "
+        "Kullanıcının söylediği bilgileri doğru kabul et, emin olmadığın çıkarımları gerçek gibi kaydetme."
+    )
+
+
 def gunluk_al(durum: dict, karakter: str | None = None) -> list:
     """Bir karakterin günlük kayıt listesini döndürür (eski kayıtlarla uyumlu)."""
     karakter = karakter or durum.get("karakter", "leyla")
