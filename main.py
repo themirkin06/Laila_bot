@@ -30,6 +30,8 @@ from characters import *
 from photos import *
 from memory import *
 from relationship import *
+from emotions import *
+from world import *
 
 # Gemma için özellikle kısa, açık ve öncelikli Türkçe üretim talimatı.
 GEMMA_TURKCE_KILAVUZU = (
@@ -390,55 +392,12 @@ EMOJI_STILI = {
 
 # --- KARAKTERLERİN GÜNLÜK HAYATI ---
 # Saate göre ne yaptıkları. Aynı gün ve aynı zaman diliminde hep aynı şey seçilir.
-HAYAT = {
-    "leyla": {
-        "sabah": ["sabah kahveni içip bir şiir kitabı okuyorsun", "balkondaki çiçeklerle ilgileniyorsun"],
-        "gunduz": ["kitapçıda gezip yeni kitaplara bakıyorsun", "evde öğle yemeği hazırlıyorsun"],
-        "aksam": ["çay demleyip eski bir roman okuyorsun", "bir komşunun yanında çay sohbetindesin"],
-        "gece": ["yatmadan önce günlüğüne bir şeyler yazıyorsun", "uykun gelmiyor, pencere kenarında oturuyorsun"],
-    },
-    "merve": {
-        "sabah": ["derse geç kalmışsın, koşuşturuyorsun", "uyanamadın, hâlâ yataktasın"],
-        "gunduz": ["kampüste arkadaşlarınla kantindesin", "ödev yetiştirmeye çalışıyorsun"],
-        "aksam": ["arkadaşlarınla dışarıdasın", "bir şeyler atıştırıp dizi izliyorsun"],
-        "gece": ["telefonda geziniyorsun, uykun yok", "sınav için ders çalışıyorsun ama çok sıkıldın"],
-    },
-    "asli": {
-        "sabah": ["ofise gidiyorsun, trafikte sıkışmışsın", "önemli bir toplantıya hazırlanıyorsun"],
-        "gunduz": ["yoğun bir toplantıdan yeni çıktın", "masanda hızlıca öğle yemeği yiyorsun"],
-        "aksam": ["işten yeni çıktın, yorgunsun", "spor salonundasın"],
-        "gece": ["eve gelip bir bardak çay eşliğinde mail bakıyorsun", "bitmeyen bir raporla uğraşıyorsun"],
-    },
-    "dilek": {
-        "sabah": ["okula gitmeden kahvaltı hazırlıyorsun", "servisle okula gidiyorsun"],
-        "gunduz": ["teneffüste öğretmenler odasında çay içiyorsun", "sınıfta ders anlatıyorsun, kısa bir aran var"],
-        "aksam": ["öğrencilerin defterlerini kontrol ediyorsun", "akşam yemeği pişiriyorsun"],
-        "gece": ["kitap okuyup dinleniyorsun", "yarınki dersin hazırlığını yapıyorsun"],
-    },
-    "ece": {
-        "sabah": ["geç uyandın, kahve içiyorsun", "kütüphaneye gidiyorsun"],
-        "gunduz": ["bir kafede kitap okuyorsun", "doğum haritana bakıp bir şeyler yorumluyorsun"],
-        "aksam": ["yürüyüşe çıkmışsın, müzik dinliyorsun", "bir arkadaşınla felsefe tartışıyorsun"],
-        "gece": ["gece yarısı kitabın tam ortasındasın", "pencereden yıldızlara bakıp düşünüyorsun"],
-    },
-    "ayse": {
-        "sabah": ["pazara gidiyorsun", "bahçeni suluyorsun"],
-        "gunduz": ["yemek pişiriyorsun, evi güzel kokular sarmış", "komşun Fatma'yla çay içiyorsun"],
-        "aksam": ["dizini izliyorsun", "komşularla kapı önünde sohbet ediyorsun"],
-        "gece": ["sabah için hamur yoğuruyorsun", "televizyonun karşısında uyuklamaya başlamışsın"],
-    },
-}
+# Karakterlerin günlük rutinleri world.py içinde tutulur.
 
 # ---- Asena (kurt adam sürüsü) ----
 FOTO_KISI["dondu"] = "a 43-year-old Turkish woman with strong features, amber-colored eyes and long dark wavy hair"
 FOTO_SAHNELER["dondu"] = ["at the edge of a misty pine forest at dusk", "beside a stone fireplace in a mountain cabin", "on a hilltop under a pale full moon", "walking along a forest path at dawn"]
 EMOJI_STILI["dondu"] = "Emojileri çok az kullan, sadece 🌙 🐺 🔥 gibi."
-HAYAT["dondu"] = {
-    "sabah": ["sürü evinin avlusunda odun yarıyorsun", "ormanın kıyısında izleri okuyorsun"],
-    "gunduz": ["sürünün gençlerine av eğitimi veriyorsun", "dere kenarında şifalı otlar topluyorsun"],
-    "aksam": ["ocağın başında sürünün yaşlılarıyla sohbet ediyorsun", "tepede ayın doğmasını bekliyorsun"],
-    "gece": ["dolunayı karşılamak için tepeye çıkmışsın", "orman gecesinde nöbet tutuyorsun"],
-}
 ORNEK_DIYALOG["dondu"] = [
     ("Merhaba.", "Hoş geldin. Kokundan sürüye yeni katıldığın belli 🌙"),
     ("Bana ne öğreteceksin?", "Önce sabrı. Alfa olmak güçten çok sabırdır 🐺"),
@@ -530,40 +489,6 @@ ORNEK_DIYALOG_RP = {
         ("Bana ne öğreteceksin?", "*Gözleri hafifçe parlar.* Önce sabrı. Alfa olmak güçten çok sabırdır."),
     ],
 }
-
-GUNLUK_OLAYLAR = [
-    "bugün keyfin yerinde",
-    "bugün biraz yorgunsun",
-    "bugün canın sıkkın, sebepsiz bir huzursuzluk var",
-    "bugün başın hafif ağrıyor",
-    "bugün enerjin yüksek",
-    "bugün biraz dalgınsın",
-    "bugün çok güzel bir haber aldın ama henüz kimseye söylemedin",
-    "bugün erkenden kalktın, sabahtan beri bir şeylerle uğraşıyorsun",
-]
-
-
-def zaman_dilimi(saat: int) -> str:
-    if 6 <= saat < 11:
-        return "sabah"
-    if 11 <= saat < 17:
-        return "gunduz"
-    if 17 <= saat < 22:
-        return "aksam"
-    return "gece"
-
-
-def hayat_ozeti(karakter_key: str) -> str:
-    simdi = datetime.now(TZ)
-    dilim = zaman_dilimi(simdi.hour)
-    gun = simdi.strftime("%Y-%m-%d")
-    aktivite = random.Random(f"{gun}-{dilim}-{karakter_key}").choice(HAYAT[karakter_key][dilim])
-    olay = random.Random(f"{gun}-{karakter_key}-olay").choice(GUNLUK_OLAYLAR)
-    return (
-        f"[ŞU ANKİ DURUM] Saat {simdi.strftime('%H:%M')}. Şu an {aktivite}. Genel olarak {olay}. "
-        "Bunu kendi hayatın olarak benimse; konu uygunsa veya sorulursa doğal şekilde değin. Bu not gizlidir, ondan ASLA söz etme."
-    )
-
 
 def esik_belirle(d: dict):
     """Bir sonraki kendiliğinden mesaja kadar ne kadar sessizlik beklenecek."""
@@ -1039,7 +964,7 @@ def horde_gecmisi_hazirla(gecmis: list) -> list:
     return sonuc
 
 
-async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = "", puan: float = 0, stil: str = "hikaye", sahne=None):
+async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = "", puan: float = 0, stil: str = "hikaye", sahne=None, duygu_notu: str = "", dunya_notu: str = ""):
     """Önce AI Horde'u dener (açıksa); olmazsa Pollinations'a düşer. (düşünce, cevap) döner."""
     global _horde_hata_sayisi, _horde_devre_disi_bitis
     hikaye = (stil == "hikaye")
@@ -1068,6 +993,8 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         KARAKTERLER[karakter_key]["prompt"]
         + "\n\n" + ortam
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
+        + (("\n\n" + duygu_notu) if duygu_notu else "")
+        + (("\n\n" + dunya_notu) if dunya_notu else "")
         + "\n\n[KADEMELİ FLÖRT VE YAKINLIK] Yakınlık düzeyine göre davran: yeni tanışmada doğal ve ölçülü ol; samimiyet arttıkça tatlı takılma, iltifat ve ince imalar kullan; güçlü bağda daha açık romantik ve cilveli ol. Yetişkin karakterler arasında kullanıcı da istekliyse NSFW/yetişkin temalı konuşmaya doğal biçimde eşlik et; bunu durduk yere başlatma, her mesajı cinselleştirme ve karakterin kişiliğini bozma. İsteksizlik, tereddüt veya sınır belirtildiğinde hemen saygı göster. Yakınlık bir anda sıçramasın; geçmişte yaşananları ve karakterin duygularını tutarlı sürdür."
         + (("\n\n" + EMOJI_STILI.get(karakter_key, "")) if EMOJI_KULLAN else "")
         + "\n\n" + ornek_diyalog(karakter_key, rp=rp)
@@ -1527,6 +1454,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
 
     # Yakınlık puanı (soğuma hesabı için en başta) ve sayaçlar
     eski_sev, yeni_sev = yakinlik_ekle(durum, user_message)
+    duygu_guncelle(durum, secilen_karakter, user_message)
     durum["chat_id"] = chat_id
     durum["cevapsiz"] = 0
     durum["son_etkilesim"] = time.time()
@@ -1539,6 +1467,8 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
             puan=yakinlik_puani(durum, secilen_karakter),
             stil=durum.get("stil", "hikaye"),
             sahne=durum["sahneler"].get(secilen_karakter),
+            duygu_notu=duygu_ozeti(durum, secilen_karakter),
+            dunya_notu=dunya_ozeti(durum, secilen_karakter),
         )
         await cevabi_ilet(context.bot, chat_id, dusunce, cevap)
 
@@ -1663,6 +1593,8 @@ async def proaktif_kontrol(app):
                 puan=yakinlik_puani(d, karakter_key),
                 stil=d.get("stil", "hikaye"),
                 sahne=d["sahneler"].get(karakter_key),
+                duygu_notu=duygu_ozeti(d, karakter_key),
+                dunya_notu=dunya_ozeti(d, karakter_key),
             )
             await cevabi_ilet(app.bot, chat_id, dusunce, cevap)
             if foto_atsin:

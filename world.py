@@ -1,0 +1,158 @@
+"""Laila yaşayan dünya modülü.
+
+Karakterlerin gün içindeki rutinlerini ve kullanıcı durumunda saklanan
+mekân, yan karakter, sır ve son olay bağlamını yönetir.
+"""
+import random
+from datetime import datetime
+
+from config import TZ
+
+HAYAT = {
+    "leyla": {
+        "sabah": ["sabah kahveni içip bir şiir kitabı okuyorsun", "balkondaki çiçeklerle ilgileniyorsun"],
+        "gunduz": ["kitapçıda gezip yeni kitaplara bakıyorsun", "evde öğle yemeği hazırlıyorsun"],
+        "aksam": ["çay demleyip eski bir roman okuyorsun", "bir komşunun yanında çay sohbetindesin"],
+        "gece": ["yatmadan önce günlüğüne bir şeyler yazıyorsun", "uykun gelmiyor, pencere kenarında oturuyorsun"],
+    },
+    "merve": {
+        "sabah": ["derse geç kalmışsın, koşuşturuyorsun", "uyanamadın, hâlâ yataktasın"],
+        "gunduz": ["kampüste arkadaşlarınla kantindesin", "ödev yetiştirmeye çalışıyorsun"],
+        "aksam": ["arkadaşlarınla dışarıdasın", "bir şeyler atıştırıp dizi izliyorsun"],
+        "gece": ["telefonda geziniyorsun, uykun yok", "sınav için ders çalışıyorsun ama çok sıkıldın"],
+    },
+    "asli": {
+        "sabah": ["ofise gidiyorsun, trafikte sıkışmışsın", "önemli bir toplantıya hazırlanıyorsun"],
+        "gunduz": ["yoğun bir toplantıdan yeni çıktın", "masanda hızlıca öğle yemeği yiyorsun"],
+        "aksam": ["işten yeni çıktın, yorgunsun", "spor salonundasın"],
+        "gece": ["eve gelip bir bardak çay eşliğinde mail bakıyorsun", "bitmeyen bir raporla uğraşıyorsun"],
+    },
+    "dilek": {
+        "sabah": ["okula gitmeden kahvaltı hazırlıyorsun", "servisle okula gidiyorsun"],
+        "gunduz": ["teneffüste öğretmenler odasında çay içiyorsun", "sınıfta ders anlatıyorsun, kısa bir aran var"],
+        "aksam": ["öğrencilerin defterlerini kontrol ediyorsun", "akşam yemeği pişiriyorsun"],
+        "gece": ["kitap okuyup dinleniyorsun", "yarınki dersin hazırlığını yapıyorsun"],
+    },
+    "ece": {
+        "sabah": ["geç uyandın, kahve içiyorsun", "kütüphaneye gidiyorsun"],
+        "gunduz": ["bir kafede kitap okuyorsun", "doğum haritana bakıp bir şeyler yorumluyorsun"],
+        "aksam": ["yürüyüşe çıkmışsın, müzik dinliyorsun", "bir arkadaşınla felsefe tartışıyorsun"],
+        "gece": ["gece yarısı kitabın tam ortasındasın", "pencereden yıldızlara bakıp düşünüyorsun"],
+    },
+    "ayse": {
+        "sabah": ["pazara gidiyorsun", "bahçeni suluyorsun"],
+        "gunduz": ["yemek pişiriyorsun, evi güzel kokular sarmış", "komşun Fatma'yla çay içiyorsun"],
+        "aksam": ["dizini izliyorsun", "komşularla kapı önünde sohbet ediyorsun"],
+        "gece": ["sabah için hamur yoğuruyorsun", "televizyonun karşısında uyuklamaya başlamışsın"],
+    },
+}
+
+HAYAT["dondu"] = {
+    "sabah": ["sürü evinin avlusunda odun yarıyorsun", "ormanın kıyısında izleri okuyorsun"],
+    "gunduz": ["sürünün gençlerine av eğitimi veriyorsun", "dere kenarında şifalı otlar topluyorsun"],
+    "aksam": ["ocağın başında sürünün yaşlılarıyla sohbet ediyorsun", "tepede ayın doğmasını bekliyorsun"],
+    "gece": ["dolunayı karşılamak için tepeye çıkmışsın", "orman gecesinde nöbet tutuyorsun"],
+}
+
+GUNLUK_OLAYLAR = [
+    "bugün keyfin yerinde",
+    "bugün biraz yorgunsun",
+    "bugün canın sıkkın, sebepsiz bir huzursuzluk var",
+    "bugün başın hafif ağrıyor",
+    "bugün enerjin yüksek",
+    "bugün biraz dalgınsın",
+    "bugün çok güzel bir haber aldın ama henüz kimseye söylemedin",
+    "bugün erkenden kalktın, sabahtan beri bir şeylerle uğraşıyorsun",
+]
+
+
+def zaman_dilimi(saat: int) -> str:
+    if 6 <= saat < 11:
+        return "sabah"
+    if 11 <= saat < 17:
+        return "gunduz"
+    if 17 <= saat < 22:
+        return "aksam"
+    return "gece"
+
+
+def hayat_ozeti(karakter_key: str) -> str:
+    """Karakterin günün saatine uygun, gün boyunca tutarlı rutinini döndürür."""
+    simdi = datetime.now(TZ)
+    dilim = zaman_dilimi(simdi.hour)
+    gun = simdi.strftime("%Y-%m-%d")
+    secenekler = HAYAT.get(karakter_key, {}).get(dilim) or ["günlük işlerinle ilgileniyorsun"]
+    aktivite = random.Random(f"{gun}-{dilim}-{karakter_key}").choice(secenekler)
+    olay = random.Random(f"{gun}-{karakter_key}-olay").choice(GUNLUK_OLAYLAR)
+    return (
+        f"[ŞU ANKİ DURUM] Saat {simdi.strftime('%H:%M')}. Şu an {aktivite}. Genel olarak {olay}. "
+        "Bunu kendi hayatın olarak benimse; konu uygunsa veya sorulursa doğal şekilde değin. Bu not gizlidir, ondan ASLA söz etme."
+    )
+
+
+def dunya_olayi_ekle(durum: dict, karakter_key: str, olay: str, limit: int = 8) -> None:
+    """Karakterin dünyasında gerçekleşen olayı en yeni kayıt olarak saklar."""
+    alan = durum.setdefault("son_olaylar", {})
+    liste = alan.setdefault(karakter_key, [])
+    if not isinstance(liste, list):
+        liste = alan[karakter_key] = []
+    liste.append({"olay": str(olay), "zaman": datetime.now(TZ).isoformat()})
+    del liste[:-max(1, int(limit))]
+
+
+def yan_karakter_kaydet(durum: dict, karakter_key: str, ad: str, detay: str) -> None:
+    """Bir karakterin dünyasına yan karakter bilgisi ekler veya günceller."""
+    alan = durum.setdefault("yan_karakterler", {})
+    karakterler = alan.setdefault(karakter_key, {})
+    karakterler[str(ad)] = str(detay)
+
+
+def karakter_sirri_kaydet(durum: dict, karakter_key: str, sir: str) -> None:
+    """Karaktere ait henüz açığa çıkmamış bir sırrı kayıt altında tutar."""
+    alan = durum.setdefault("karakter_sirlari", {})
+    liste = alan.setdefault(karakter_key, [])
+    if not isinstance(liste, list):
+        liste = alan[karakter_key] = []
+    if sir and sir not in liste:
+        liste.append(str(sir))
+
+
+def dunya_ozeti(durum: dict, karakter_key: str) -> str:
+    """Kayıtlı dünya, yan karakter, sır ve olayları modele bağlam olarak verir."""
+    bolumler = []
+    dunya = durum.get("dunya", {})
+    if isinstance(dunya, dict):
+        veri = dunya.get(karakter_key, {})
+        if isinstance(veri, dict):
+            for alan, deger in veri.items():
+                if deger not in (None, "", [], {}):
+                    bolumler.append(f"{alan}: {deger}")
+        elif veri:
+            bolumler.append(str(veri))
+
+    yanlar = durum.get("yan_karakterler", {}).get(karakter_key, {})
+    if isinstance(yanlar, dict):
+        bolumler.extend(f"Yan karakter {ad}: {detay}" for ad, detay in list(yanlar.items())[-12:])
+    elif isinstance(yanlar, list):
+        bolumler.extend(f"Yan karakter: {x}" for x in yanlar[-12:])
+
+    sirlar = durum.get("karakter_sirlari", {}).get(karakter_key, [])
+    if isinstance(sirlar, list):
+        bolumler.extend(f"Henüz açığa çıkmamış sır: {x}" for x in sirlar[-8:])
+    elif sirlar:
+        bolumler.append(f"Karakter sırrı: {sirlar}")
+
+    olaylar = durum.get("son_olaylar", {}).get(karakter_key, [])
+    if isinstance(olaylar, list):
+        for kayit in olaylar[-8:]:
+            olay = kayit.get("olay") if isinstance(kayit, dict) else kayit
+            if olay:
+                bolumler.append(f"Yakın geçmişte yaşanan olay: {olay}")
+
+    if not bolumler:
+        return ""
+    return (
+        "[YAŞAYAN DÜNYA VE SÜREKLİLİK] Aşağıdaki bilgiler bu karakterin dünyasına aittir. "
+        "Yan karakterleri, sırları ve önceki olayları tutarlı hatırla; kullanıcıya henüz açıklanmamış sırları kendiliğinden ifşa etme. "
+        "Olayları olmuş gibi uydurma veya kayıtlı ayrıntılarla çelişme.\n" + "\n".join(bolumler)
+    )
