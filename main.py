@@ -288,7 +288,18 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(metin, reply_markup=klavye)
 
 async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sayfa: int):
-    """Her sayfada iki karakter gösterir; gezinme ve tanışma butonları ayrı mesajdadır."""
+    """Her sayfada iki karakter gösterir; sayfa değişince önceki galeri temizlenir."""
+    # Önceki sayfanın fotoğraflarını ve gezinme mesajını temizle.
+    eski_mesaj_idleri = context.user_data.pop("laila_galeri_mesaj_idleri", [])
+    for mesaj_id in eski_mesaj_idleri:
+        try:
+            await context.bot.delete_message(
+                chat_id=query.message.chat_id,
+                message_id=mesaj_id,
+            )
+        except Exception as exc:
+            logging.debug("Eski galeri mesajı silinemedi (%s): %s", mesaj_id, exc)
+
     keys = list(KARAKTERLER.keys())
     toplam_sayfa = max(1, (len(keys) + GALERI_SAYFA_BOYUTU - 1) // GALERI_SAYFA_BOYUTU)
     sayfa = max(0, min(sayfa, toplam_sayfa - 1))
@@ -311,15 +322,20 @@ async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sa
         medya.append(InputMediaPhoto(media=foto, caption=f"{isim}\n{tanitim}"))
         klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
 
+    yeni_mesaj_idleri = []
     if medya:
         if len(medya) == 1:
             item = medya[0]
-            await context.bot.send_photo(
+            gonderilen = await context.bot.send_photo(
                 chat_id=query.message.chat_id, photo=item.media,
                 caption=item.caption,
             )
+            yeni_mesaj_idleri.append(gonderilen.message_id)
         else:
-            await context.bot.send_media_group(chat_id=query.message.chat_id, media=medya)
+            gonderilenler = await context.bot.send_media_group(
+                chat_id=query.message.chat_id, media=medya
+            )
+            yeni_mesaj_idleri.extend(m.message_id for m in gonderilenler)
 
     gezinme = []
     if sayfa > 0:
@@ -328,11 +344,13 @@ async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sa
     if sayfa < toplam_sayfa - 1:
         gezinme.append(InlineKeyboardButton("Sonraki ➡️", callback_data=f"gal_{sayfa+1}"))
     klavye.append(gezinme)
-    await context.bot.send_message(
+    gezinme_mesaji = await context.bot.send_message(
         chat_id=query.message.chat_id,
         text="Tanışmak istediğin karakteri seç:",
         reply_markup=InlineKeyboardMarkup(klavye),
     )
+    yeni_mesaj_idleri.append(gezinme_mesaji.message_id)
+    context.user_data["laila_galeri_mesaj_idleri"] = yeni_mesaj_idleri
 
 # --- /yakinlik ---
 async def yakinlik_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
