@@ -28,6 +28,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 from config import *
 from characters import *
 from photos import *
+from memory import *
 
 # Gemma için özellikle kısa, açık ve öncelikli Türkçe üretim talimatı.
 GEMMA_TURKCE_KILAVUZU = (
@@ -618,10 +619,6 @@ def yakinlik_ozeti(key: str, puan: float) -> str:
     )
 
 
-# Kullanıcı durumları. Veritabanı açıksa her değişiklikten sonra oraya da kaydedilir.
-kullanici_durumu = {}
-
-
 def esik_belirle(d: dict):
     """Bir sonraki kendiliğinden mesaja kadar ne kadar sessizlik beklenecek."""
     test = os.getenv("PROAKTIF_ESIK_DAKIKA")
@@ -667,35 +664,6 @@ def yeni_durum(karakter: str, chat_id: int) -> dict:
     return durum_tamamla({"karakter": karakter, "chat_id": chat_id})
 
 
-def hafiza_al(durum: dict) -> list:
-    """Seçili karakterin ayrı hafızasını döndürür."""
-    return durum["hafizalar"].setdefault(durum["karakter"], [])
-
-
-# --- Kalıcı hafıza (Upstash Redis REST) ---
-def redis_komut(*args):
-    req = urllib.request.Request(
-        UPSTASH_URL,
-        data=json.dumps(list(args)).encode("utf-8"),
-        headers={"Authorization": f"Bearer {UPSTASH_TOKEN}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=15) as r:
-        cevap = json.loads(r.read().decode("utf-8"))
-    if isinstance(cevap, dict) and cevap.get("error"):
-        raise RuntimeError(cevap["error"])
-    return cevap.get("result") if isinstance(cevap, dict) else cevap
-
-
-def durumlari_yukle_sync() -> dict:
-    sonuc = {}
-    for anahtar in redis_komut("KEYS", DB_ANAHTAR_ONEK + "*") or []:
-        veri = redis_komut("GET", anahtar)
-        if veri:
-            sonuc[int(anahtar.split(":")[-1])] = durum_tamamla(json.loads(veri))
-    return sonuc
-
-
 # Fotoğraf havuzu: karakter -> Telegram file_id listesi
 FOTO_HAVUZU = {k: [] for k in KARAKTERLER}
 son_havuz_foto = {}
@@ -716,19 +684,6 @@ async def havuz_kaydet():
         await asyncio.to_thread(redis_komut, "SET", HAVUZ_ANAHTARI, veri)
     except Exception as e:
         logging.error(f"Havuz kaydedilemedi: {e}")
-
-
-async def durum_kaydet(user_id: int):
-    if not DB_AKTIF:
-        return
-    durum = kullanici_durumu.get(user_id)
-    if not durum:
-        return
-    try:
-        veri = json.dumps(durum, ensure_ascii=False)  # anlık kopya, kayıt sırasında değişmesin
-        await asyncio.to_thread(redis_komut, "SET", f"{DB_ANAHTAR_ONEK}{user_id}", veri)
-    except Exception as e:
-        logging.error(f"Hafıza kaydedilemedi: {e}")
 
 
 # --- Render sağlık sunucusu ---
@@ -805,16 +760,6 @@ def cevabi_ayristir(raw_text: str):
     if dusunce and SIZINTI_KALIBI.search(dusunce):
         dusunce = ""
     return dusunce, cevap
-
-
-def hafiza_kaydi(dusunce: str, cevap: str) -> str:
-    """Hafızaya etiketlerle kaydet ki model formatı unutmasın."""
-    return cevap  # iç ses kaldırıldı, hafızada etiket tutulmaz
-
-
-def hafizayi_kirp(hafiza: list):
-    if len(hafiza) > HAFIZA_LIMITI:
-        hafiza[:] = hafiza[-HAFIZA_LIMITI:]
 
 
 FOTO_KALIBI = re.compile(
@@ -1809,7 +1754,7 @@ async def proaktif_dongu(app):
 async def post_init(app):
     if DB_AKTIF:
         try:
-            yuklenen = await asyncio.to_thread(durumlari_yukle_sync)
+            yuklenen = await asyncio.to_thread(durumlari_yukle_sync, durum_tamamla)
             kullanici_durumu.update(yuklenen)
             logging.info(f"Kalıcı hafıza açık, {len(yuklenen)} kullanıcı yüklendi.")
             havuz = await asyncio.to_thread(havuz_yukle_sync)
