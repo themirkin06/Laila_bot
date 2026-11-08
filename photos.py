@@ -101,10 +101,17 @@ def cloudflare_gorsel_sync(prompt: str, seed: int) -> bytes:
 
 async def foto_uret_bytes(
     karakter: dict, seed: int, yakinlik: int = 0, surpriz: bool = False,
-    reference_image: bytes = None,
+    reference_image: bytes = None, scene_prompt: str = "",
 ) -> bytes:
     """Referans varsa yüzü korumaya çalışır; yoksa eski üretim akışını kullanır."""
     prompt = foto_promptu(karakter, yakinlik=yakinlik, surpriz=surpriz)
+    if scene_prompt:
+        prompt += (
+            ", candid real-life moment showing the woman actively doing this exact activity: "
+            + scene_prompt
+            + ". The activity and surroundings must be clearly visible; natural spontaneous smartphone photo, "
+              "not a posed studio portrait, not a collage, not a screenshot, no text or watermark"
+        )
     if reference_image and not CF_AKTIF:
         raise RuntimeError("Yüz referanslı üretim için CLOUDFLARE_ACCOUNT_ID ve CLOUDFLARE_API_TOKEN gerekli.")
     if CF_AKTIF and reference_image:

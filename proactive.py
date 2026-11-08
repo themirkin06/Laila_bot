@@ -43,9 +43,17 @@ async def proaktif_kontrol(app, b):
         chat_id = d["chat_id"]
         saat = max(1, int(sessizlik // 3600))
         sev = b["yakinlik_seviyesi"](b["yakinlik_puani"](d, karakter_key))
+        # Fotoğraf yalnızca kendiliğinden gönderilen özel mesajlarda çıkar:
+        # günde en fazla 2 kez, en az 6 saat arayla. İlk ve üçüncü proaktif
+        # mesaj uygun anlarsa fotoğraf fırsatıdır; sıradan sohbet fotoğraf üretmez.
+        if d.get("proaktif_foto_gun") != bugun:
+            d["proaktif_foto_gun"] = bugun
+            d["proaktif_foto_sayi"] = 0
+        son_foto_araligi = time.time() - d.get("son_proaktif_foto", 0)
         foto_atsin = (
-            random.random() < b["PROAKTIF_FOTO_ORANLARI"][sev]
-            and time.time() - d.get("son_proaktif_foto", 0) > b["PROAKTIF_FOTO_ARALIK"]
+            d.get("proaktif_foto_sayi", 0) < 2
+            and d.get("proaktif_sayi", 0) in (0, 2)
+            and son_foto_araligi >= 6 * 3600
         )
 
         ekstra = (
@@ -59,7 +67,11 @@ async def proaktif_kontrol(app, b):
                 "ve kullanıcıya sözle seslen. Kısa ol (2-3 cümle), kendini tanıtma."
             )
         if foto_atsin:
-            ekstra += " Mesajının yanında bir fotoğraf da göndereceksin, bunu kısaca ima edebilirsin."
+            ekstra += (
+                " Bu kendiliğinden mesajın yanında gündelik ve doğal bir fotoğraf da gönderilecek. "
+                "Mesajında küçük, gerçekçi bir an paylaş: örneğin 'çay içiyorum', 'kahvemi aldım' "
+                "veya 'seni özledim, sana bir kare yollayayım dedim'. Fotoğrafla çelişen bir etkinlik anlatma."
+            )
 
         try:
             dusunce, cevap = await b["llm_cevap"](
@@ -76,8 +88,27 @@ async def proaktif_kontrol(app, b):
             await b["cevabi_ilet"](app.bot, chat_id, dusunce, cevap)
             if foto_atsin:
                 try:
-                    await b["foto_gonder"](app.bot, chat_id, karakter, yakinlik=sev)
+                    bulunan = b["otomatik_foto_sahnesi_bul"](cevap)
+                    if bulunan:
+                        sahne_key, sahne_prompt = bulunan
+                    else:
+                        sahne_key = "ozledim_selfie"
+                        sahne_prompt = (
+                            "a warm, casual spontaneous selfie for someone she misses, "
+                            "relaxed at home in a natural everyday moment, candid phone-camera framing"
+                        )
+                    await b["foto_gonder"](
+                        app.bot, chat_id, karakter,
+                        caption="Sana küçük bir kare göndereyim dedim ❤️",
+                        yakinlik=sev, havuzdan=False, surpriz=True,
+                        scene_prompt=sahne_prompt,
+                    )
                     d["son_proaktif_foto"] = time.time()
+                    d["proaktif_foto_sayi"] = d.get("proaktif_foto_sayi", 0) + 1
+                    logging.info(
+                        f"Günlük kendiliğinden fotoğraf: {karakter_key} "
+                        f"({d['proaktif_foto_sayi']}/2), sahne={sahne_key}"
+                    )
                 except Exception as img_error:
                     logging.error(f"Proaktif görsel hatası: {img_error}")
 

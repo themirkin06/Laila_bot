@@ -102,6 +102,8 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("yakinlik", {})
     d.setdefault("son_kullanici", time.time())
     d.setdefault("son_proaktif_foto", 0)
+    d.setdefault("proaktif_foto_gun", "")
+    d.setdefault("proaktif_foto_sayi", 0)
     # Her yakınlık seviyesi için en fazla bir otomatik kutlama fotoğrafı gönderilir.
     d.setdefault("seviye_foto_gonderildi", {})
     d.setdefault("stil", "hikaye")
@@ -231,9 +233,58 @@ async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
             await bot.send_message(chat_id=chat_id, text=duz)
 
 
+# --- Sohbet içinden otomatik sahne fotoğrafı ---
+# Yalnızca karakterin kendi ağzından, şu anda yaptığı açıkça anlaşılan eylemler yakalanır.
+OTOMATIK_FOTO_SAHNELERI = [
+    ("cay_icme", re.compile(r"\b(çay içiyorum|çayımı içiyorum|çay içmeye başladım)\b", re.I),
+     "drinking Turkish tea at home, holding a clear tulip-shaped tea glass, cozy natural setting"),
+    ("cay_demleme", re.compile(r"\b(çay demliyorum|demlik hazırlıyorum|çay koyuyorum|çay hazırlıyorum|demliyorum)\b", re.I),
+     "preparing and brewing Turkish tea in a home kitchen, tea kettle and teapot clearly visible"),
+    ("kahve", re.compile(r"\b(kahve yapıyorum|kahvemi hazırlıyorum|kahve pişiriyorum|kahve içiyorum)\b", re.I),
+     "making or drinking coffee in a cozy kitchen or cafe, coffee cup clearly visible"),
+    ("yemek", re.compile(r"\b(yemek yapıyorum|yemek hazırlıyorum|mutfakta.*pişiriyorum|yemek pişiriyorum)\b", re.I),
+     "cooking a meal in the kitchen, ingredients and cookware visible"),
+    ("temizlik", re.compile(r"\b(temizlik yapıyorum|evi topluyorum|bulaşık yıkıyorum)\b", re.I),
+     "doing ordinary housework at home, natural lived-in surroundings"),
+    ("kitap", re.compile(r"\b(kitap okuyorum|kitap okuyordum)\b", re.I),
+     "reading a book in a comfortable quiet corner, book clearly visible"),
+    ("uzanma", re.compile(r"\b(uzandım|uzanıyorum|koltuğa uzandım|yatağa uzandım|dinleniyorum)\b", re.I),
+     "relaxing while lying on a sofa or bed, comfortable modest home clothes"),
+    ("uyku_hazirligi", re.compile(r"\b(yatıyorum|yatmaya gidiyorum|uyumaya hazırlanıyorum|yatağa geçiyorum)\b", re.I),
+     "getting ready for bed in a cozy bedroom, modest sleepwear, warm bedside lighting"),
+    ("hazirlik", re.compile(r"\b(giyiniyorum|hazırlanıyorum|makyaj yapıyorum|saçımı yapıyorum)\b", re.I),
+     "getting ready in front of a bedroom mirror, everyday outfit and personal items visible"),
+    ("disari", re.compile(r"\b(dışarıdayım|dışarı çıktım|yürüyüş yapıyorum|sahildeyim|parkta yürüyorum)\b", re.I),
+     "out for a walk outdoors, natural street or park surroundings"),
+    ("alisveris", re.compile(r"\b(alışveriş yapıyorum|marketteyim|pazara geldim)\b", re.I),
+     "shopping in a grocery store or local market, natural candid setting"),
+]
+
+
+def otomatik_foto_sahnesi_bul(cevap: str):
+    """Karakter cevabında açık bir şimdiki zaman etkinliği varsa sahne anahtarı ve prompt döndürür."""
+    metin = re.sub(r"\*[^*]*\*", " ", cevap or "")
+    for anahtar, kalip, prompt in OTOMATIK_FOTO_SAHNELERI:
+        if kalip.search(metin):
+            return anahtar, prompt
+    return None
+
+
+def otomatik_foto_gonderilmeli(durum: dict, karakter_key: str, sahne_key: str) -> bool:
+    """Aynı etkinlikte tekrarı önler; yeni sahneye kısa bir geçiş payı bırakır."""
+    kayitlar = durum.setdefault("otomatik_foto_kaydi", {})
+    onceki = kayitlar.get(karakter_key, {})
+    simdi = time.time()
+    if onceki.get("sahne") == sahne_key and simdi - float(onceki.get("zaman", 0)) < 45 * 60:
+        return False
+    if onceki and simdi - float(onceki.get("zaman", 0)) < 3 * 60:
+        return False
+    return True
+
+
 async def foto_gonder(
     bot, chat_id: int, karakter: dict, caption: str = None,
-    yakinlik: int = 0, havuzdan: bool = True, surpriz: bool = False
+    yakinlik: int = 0, havuzdan: bool = True, surpriz: bool = False, scene_prompt: str = ""
 ):
     """Önce havuzu kullanır; yeni üretimde karakterin kayıtlı yüz referansını uygular."""
     key = karakter["key"]
@@ -262,7 +313,7 @@ async def foto_gonder(
 
     foto_bytes = await foto_uret_bytes(
         karakter, random.randint(1, 999999), yakinlik=yakinlik,
-        surpriz=surpriz, reference_image=reference_bytes,
+        surpriz=surpriz, reference_image=reference_bytes, scene_prompt=scene_prompt,
     )
     await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
 
@@ -784,6 +835,9 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         )
         await cevabi_ilet(context.bot, chat_id, dusunce, cevap)
 
+        # Normal sohbet sırasında kendiliğinden fotoğraf gönderilmez.
+        # Otomatik fotoğraflar yalnızca proactive.py içindeki günlük sürprizlerden gelir.
+
         hafiza.append({"role": "user", "content": user_message})
         hafiza.append({"role": "assistant", "content": hafiza_kaydi(dusunce, cevap)})
         hafizayi_kirp(hafiza)
@@ -885,6 +939,7 @@ async def post_init(app):
             "dunya_ozeti": dunya_ozeti,
             "cevabi_ilet": cevabi_ilet,
             "foto_gonder": foto_gonder,
+            "otomatik_foto_sahnesi_bul": otomatik_foto_sahnesi_bul,
             "hafiza_kaydi": hafiza_kaydi,
             "hafizayi_kirp": hafizayi_kirp,
             "esik_belirle": esik_belirle,
