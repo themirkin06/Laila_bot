@@ -9,6 +9,7 @@ import json
 import logging
 import urllib.parse
 import urllib.request
+import urllib.error
 import uuid
 
 from config import CF_ACCOUNT_ID, CF_API_TOKEN, CF_AKTIF, POLL_KEY, POLL_MODEL
@@ -64,8 +65,13 @@ def cloudflare_referansli_sync(prompt: str, seed: int, reference_image: bytes) -
                  "User-Agent": "Mozilla/5.0"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=150) as r:
-        cevap = json.loads(r.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=150) as r:
+            cevap = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        ayrinti = exc.read().decode("utf-8", errors="replace")[:4000]
+        logging.error("Cloudflare FLUX.2 Klein HTTP %s yanıtı: %s", exc.code, ayrinti)
+        raise RuntimeError(f"Cloudflare FLUX.2 Klein HTTP {exc.code}: {ayrinti[:1000]}") from exc
     resim = (cevap.get("result") or {}).get("image")
     if not resim:
         raise RuntimeError(f"Cloudflare referanslı görsel döndürmedi: {cevap.get('errors') or cevap}")
@@ -101,17 +107,10 @@ def cloudflare_gorsel_sync(prompt: str, seed: int) -> bytes:
 
 async def foto_uret_bytes(
     karakter: dict, seed: int, yakinlik: int = 0, surpriz: bool = False,
-    reference_image: bytes = None, scene_prompt: str = "",
+    reference_image: bytes = None,
 ) -> bytes:
     """Referans varsa yüzü korumaya çalışır; yoksa eski üretim akışını kullanır."""
     prompt = foto_promptu(karakter, yakinlik=yakinlik, surpriz=surpriz)
-    if scene_prompt:
-        prompt += (
-            ", candid real-life moment showing the woman actively doing this exact activity: "
-            + scene_prompt
-            + ". The activity and surroundings must be clearly visible; natural spontaneous smartphone photo, "
-              "not a posed studio portrait, not a collage, not a screenshot, no text or watermark"
-        )
     if reference_image and not CF_AKTIF:
         raise RuntimeError("Yüz referanslı üretim için CLOUDFLARE_ACCOUNT_ID ve CLOUDFLARE_API_TOKEN gerekli.")
     if CF_AKTIF and reference_image:
