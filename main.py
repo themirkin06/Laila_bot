@@ -11,7 +11,7 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
 
 logging.basicConfig(
@@ -255,23 +255,79 @@ async def cevabi_ilet(bot, chat_id: int, dusunce: str, cevap: str):
 
 
 # --- Başlangıç Menüsü ---
+KARAKTER_KISA_TANITIM = {
+    "leyla": "Kitapçı, zarif ve ilk başta biraz mesafeli.",
+    "merve": "Enerjik, zeki, esprili ve biraz asi.",
+    "asli": "Kendinden emin, başarılı ve şık bir yönetici.",
+    "dilek": "Şefkatli, sabırlı ve iyi bir dinleyici.",
+    "ece": "Gizemli, meraklı, felsefe ve astroloji tutkunu.",
+    "ayse": "Neşeli, sıcak ve mahallenin haber merkezi.",
+    "dondu": "Bilge, otoriter ve koruyucu sürü lideri.",
+}
+
+async def _karakter_galeri_fotografi(key: str, karakter: dict, semaphore: asyncio.Semaphore):
+    """Önce kayıtlı Telegram fotoğrafını kullanır; yoksa karakter için yeni görsel üretir."""
+    havuz = FOTO_HAVUZU.get(key, [])
+    if havuz:
+        return random.choice(havuz)
+    async with semaphore:
+        return await foto_uret_bytes(karakter, int(karakter.get("seed", random.randint(1, 999999))))
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Laila karşılama mesajı ve tüm karakterlerin fotoğraflı galerisi."""
     if not yetkili_mi(update):
         return
-    klavye = [
-        [InlineKeyboardButton("🌸 Leyla (42, Olgun, Kültürlü)", callback_data='sec_leyla')],
-        [InlineKeyboardButton("⚡ Merve (26, Asi, Enerjik)", callback_data='sec_merve')],
-        [InlineKeyboardButton("💼 Aslı (30, Kariyerli, Şık)", callback_data='sec_asli')],
-        [InlineKeyboardButton("📚 Dilek (35, Anaç, Şefkatli)", callback_data='sec_dilek')],
-        [InlineKeyboardButton("🔮 Ece (22, Gizemli, Zeki)", callback_data='sec_ece')],
-        [InlineKeyboardButton("🍲 Ayşe (50, Tatlı, Dedikoducu)", callback_data='sec_ayse')],
-        [InlineKeyboardButton("🐺 Asena (43, Kurt Adam Sürüsü, Bilge)", callback_data='sec_dondu')]
-    ]
-    reply_markup = InlineKeyboardMarkup(klavye)
 
-    await update.message.reply_text(
-        "👋 Hoş geldin! Bugün kiminle konuşmak istersin?",
-        reply_markup=reply_markup
+    chat_id = update.effective_chat.id
+    hosgeldin = (
+        "❤️ *Laila'nın dünyasına hoş geldin!*\n\n"
+        "Her karakterin ayrı bir kişiliği, geçmişi ve hikâyesi var. "
+        "Fotoğraflara göz at, ardından tanışmak istediğin karakteri seç."
+    )
+    await update.effective_message.reply_text(hosgeldin, parse_mode="Markdown")
+    await context.bot.send_chat_action(chat_id=chat_id, action="upload_photo")
+
+    medya = []
+    hatalar = []
+    semaphore = asyncio.Semaphore(2)  # Görsel sağlayıcılarını aynı anda aşırı yükleme.
+    keys = list(KARAKTERLER.keys())
+    sonuclar = await asyncio.gather(
+        *[_karakter_galeri_fotografi(key, KARAKTERLER[key], semaphore) for key in keys],
+        return_exceptions=True,
+    )
+
+    for key, foto in zip(keys, sonuclar):
+        isim = KARAKTERLER[key]["isim"]
+        tanitim = KARAKTER_KISA_TANITIM.get(key, "Kendi hikâyesi olan bir karakter.")
+        if isinstance(foto, Exception):
+            hatalar.append(isim)
+            logging.warning(f"{isim} galeri fotoğrafı üretilemedi: {foto}")
+            continue
+        medya.append(InputMediaPhoto(media=foto, caption=f"*{isim}*\n{tanitim}", parse_mode="Markdown"))
+
+    if len(medya) >= 2:
+        # Telegram medya grupları 2-10 öğe kabul eder; yedi karakter tek gruba sığar.
+        await context.bot.send_media_group(chat_id=chat_id, media=medya)
+    elif len(medya) == 1:
+        tek = medya[0]
+        await context.bot.send_photo(
+            chat_id=chat_id, photo=tek.media, caption=tek.caption, parse_mode=tek.parse_mode
+        )
+
+    klavye = [
+        [InlineKeyboardButton(f"{KARAKTERLER[key]['isim']} ile tanış", callback_data=f"sec_{key}")]
+        for key in keys
+    ]
+    secim_metni = "👇 *Tanışmak istediğin karakteri seç:*"
+    if hatalar:
+        secim_metni += "\n\n_Not: Bazı karakter fotoğrafları şu an oluşturulamadı; seçim yine de kullanılabilir._"
+    if not medya:
+        secim_metni = hosgeldin + "\n\n" + secim_metni
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=secim_metni,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(klavye),
     )
 
 # --- /yakinlik ---
@@ -518,7 +574,10 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             metin = f"{karakter_adi} ile kaldığınız yerden devam ediyorsun. Hadi bir şeyler yaz..."
         else:
             metin = f"Harika! Şu an {karakter_adi} ile konuşuyorsun. Hadi bir şeyler yaz..."
-        await query.edit_message_text(text=metin)
+        if query.message and query.message.photo:
+            await query.edit_message_caption(caption=metin)
+        else:
+            await query.edit_message_text(text=metin)
         await durum_kaydet(user_id)
 
         # Hikâye modunda ilk kez konuşuluyorsa sahne girişi gönderilir
