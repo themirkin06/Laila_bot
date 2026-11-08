@@ -391,6 +391,23 @@ _HAYVAN_KALIPLARI = [
 ]
 
 
+def horde_bozuk_mu(metin: str):
+    """Temizlenmiş yanıtta yalnızca belirgin iç-analiz sızıntılarını denetler.
+
+    Genel kelimeler (prompt, sistem, kural vb.) tek başına hata sayılmaz.
+    Hata varsa kısa bir neden, yoksa None döndürür.
+    """
+    metin = (metin or "").strip()
+    if not metin:
+        return "boş cevap"
+    if DUSUNCE_SIZINTISI.search(metin):
+        return "düşünce metni sızdı"
+    # Açık kalmış düşünce etiketleri kullanıcıya gösterilmesin.
+    if re.search(r"(?i)<\s*(?:think|thinking|thought|reasoning)\s*>", metin):
+        return "kapanmamış düşünce bloğu"
+    return None
+
+
 def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
     metin = re.sub(r"<\|?(?:im_start|im_end|start_of_turn|end_of_turn)\|?>(?:\s*(?:model|user|assistant|system))?", "", metin)
     metin = re.sub(r"<\|start_header_id\|>\s*(?:assistant|user|system)?\s*(?:<\|end_header_id\|>)?", "", metin)
