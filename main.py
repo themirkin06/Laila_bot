@@ -236,8 +236,8 @@ async def foto_gonder(
 
     havuz = FOTO_HAVUZU.get(key, []) if havuzdan and not surpriz else []
     if havuz:
-        secenekler = [f for f in havuz if f != son_havuz_foto.get(key)] or havuz
-        file_id = random.choice(secenekler)
+        # Karakterin yüzünü sabit tutmak için onaylı havuzun ilk portresini kullan.
+        file_id = havuz[0]
         try:
             await bot.send_photo(chat_id=chat_id, photo=file_id, caption=caption)
             son_havuz_foto[key] = file_id
@@ -270,7 +270,8 @@ async def _karakter_galeri_fotografi(key: str, karakter: dict, semaphore: asynci
     """Önce kayıtlı Telegram fotoğrafını kullanır; yoksa yeni görsel üretir."""
     havuz = FOTO_HAVUZU.get(key, [])
     if havuz:
-        return random.choice(havuz)
+        # Galeride her açılışta aynı onaylı portre gösterilir.
+        return havuz[0]
     async with semaphore:
         return await foto_uret_bytes(karakter, int(karakter.get("seed", random.randint(1, 999999))))
 
@@ -310,6 +311,7 @@ async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sa
         return_exceptions=True,
     )
     medya = []
+    medya_karakter_keys = []
     klavye = []
     for key, foto in zip(secilenler, sonuclar):
         karakter = KARAKTERLER[key]
@@ -320,6 +322,7 @@ async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sa
             klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
             continue
         medya.append(InputMediaPhoto(media=foto, caption=f"{isim}\n{tanitim}"))
+        medya_karakter_keys.append(key)
         klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
 
     yeni_mesaj_idleri = []
@@ -331,11 +334,25 @@ async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sa
                 caption=item.caption,
             )
             yeni_mesaj_idleri.append(gonderilen.message_id)
+            # İlk oluşturulan portreyi Telegram file_id olarak sakla; sonraki açılışlarda aynısı kullanılır.
+            if gonderilen.photo:
+                key = medya_karakter_keys[0]
+                file_id = gonderilen.photo[-1].file_id
+                if file_id not in FOTO_HAVUZU[key]:
+                    FOTO_HAVUZU[key].insert(0, file_id)
+                    await havuz_kaydet()
         else:
             gonderilenler = await context.bot.send_media_group(
                 chat_id=query.message.chat_id, media=medya
             )
             yeni_mesaj_idleri.extend(m.message_id for m in gonderilenler)
+            # Her karakterin ilk portresini kalıcı havuza al.
+            for key, sent in zip(medya_karakter_keys, gonderilenler):
+                if sent.photo:
+                    file_id = sent.photo[-1].file_id
+                    if file_id not in FOTO_HAVUZU[key]:
+                        FOTO_HAVUZU[key].insert(0, file_id)
+            await havuz_kaydet()
 
     gezinme = []
     if sayfa > 0:
