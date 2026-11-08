@@ -196,7 +196,7 @@ AI_HORDE_MODELS = os.getenv(
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)
-AI_HORDE_PROMPT_BUTCE = _env_int("AI_HORDE_PROMPT_BUTCE", 12500)  # Horde'a giden toplam prompt için karakter bütçesi (~3000 token); aşarsa en eski mesajlar atılır          # Horde'a giden son mesaj sayısı (bağlam taşmasın)
+AI_HORDE_PROMPT_BUTCE = _env_int("AI_HORDE_PROMPT_BUTCE", 15000)  # Horde'a giden toplam prompt için karakter bütçesi (~3000 token); aşarsa en eski mesajlar atılır          # Horde'a giden son mesaj sayısı (bağlam taşmasın)
 AI_HORDE_BEKLEME = max(5, min(120, _env_int("AI_HORDE_MAX_WAIT", 20)))  # saniye (en fazla 120)
 AI_HORDE_POLL = 2.0
 try:
@@ -362,46 +362,24 @@ def dusunce_bloklarini_sil(metin: str) -> str:
     return metin.strip()
 
 
+# Yalnızca belirgin iç-analiz ifadelerini yakala. Genel kelimeler (ör. "system", "prompt")
+# tek başına ret sebebi değildir; normal diyalogda yanlış pozitif üretmemelidir.
 DUSUNCE_SIZINTISI = re.compile(
-    r"thinking process|thought process|analyze the request|user input\s*:|self-correction|"
-    r"final (?:answer|output|response)\s*:|<\s*(?:think|thinking|thought|reasoning)\s*>",
-    flags=re.I,
+    r"(?im)^\s*(?:\[?(?:analysis|reasoning|internal thoughts?)\]?\s*:|"
+    r"(?:let me think|i need to (?:answer|respond)|we need to (?:answer|respond)|"
+    r"the user is asking|my reasoning is|chain of thought)\b)"
 )
 
 
-def horde_bozuk_mu(metin: str):
-    """Horde çıktısı döngüye girmiş ya da bozuksa sebebini döndürür, sağlamsa None."""
-    if DUSUNCE_SIZINTISI.search(metin) or any(re.search(p, metin, flags=re.I | re.M) for p in _SIZINTI_KALIPLARI):
-        return "düşünce metni sızdı"
-    if len(re.findall(r"\[\s*cevap\s*\]", metin, flags=re.I)) > 1 or len(re.findall(r"\[\s*d[üu]şünce\s*\]", metin, flags=re.I)) > 1:
-        return "tekrarlanan etiketler"
-    if metin.count("[") >= 4:
-        return "çok fazla köşeli parantez"
-    if re.search(r"(\b\w+\b)(?:\W+\1\b){3,}", metin, flags=re.I):
-        return "aynı kelimenin tekrarı"
-    return None
-
-
-# İngilizce düşünce sızıntısı kalıpları (satır başında veya içinde geçince o satırı sil)
+# Bunlar yalnızca satır başında görülen açık model-içi talimat kalıplarıdır.
 _SIZINTI_KALIPLARI = [
-    r"(?i)we need to (follow|respond|answer|write|produce|craft|create)",
-    r"(?i)we should (respond|answer|write|say)",
-    r"(?i)the user (says|wants|is saying|is asking|asks)",
-    r"(?i)must respond as",
-    r"(?i)check constraints",
-    r"(?i)let['’]?s (craft|write|respond)",
-    r"(?i)means that\b",
-    r"(?i)so we need to",
-    r"(?i)let['\u2019]?s craft",
-    r"(?i)^check:\s",
-    r"(?i)internal reasoning",
-    r"(?i)chain of thought",
-    r"(?i)thinking process",
-    r"(?i)^the model (should|will|needs)",
-    r"(?i)^response should",
-    r"(?i)(craft|produce)\b.*reply",
-    r"(?i)^we must\b",
+    r"(?i)^\s*(?:we need to (?:follow|respond|answer|write|produce|craft|create)|"
+    r"we should (?:respond|answer|write|say)|the user (?:says|wants|is saying|is asking|asks)|"
+    r"must respond as|check constraints|let['’]?s (?:craft|write|respond)|"
+    r"internal reasoning|chain of thought|thinking process|"
+    r"the model (?:should|will|needs)|response should|we must)\b",
 ]
+
 # İnsan karakterlerine özgü hayvan davranışı kalıpları
 _HAYVAN_KALIPLARI = [
     r"(?i)\bkuyruk\w*\s+sallay\w*",
@@ -421,21 +399,12 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
     metin = re.sub(r"<end_of_turn>", "", metin)
     metin = re.sub(r"<pad>", "", metin)
 
-    # İngilizce sistem promptu / düşünce sızıntısı
-    metin = re.sub(r"(?i)we need to produce.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)the user says.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)means that.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)so we need to.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)let's craft.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)check:.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)internal reasoning.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)chain of thought.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)thinking process.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)we must.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)the model.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)response should.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)craft.*?reply.*?(?=\n|$)", "", metin)
-    metin = re.sub(r"(?i)produce.*?reply.*?(?=\n|$)", "", metin)
+    # Yalnızca açık iç-analiz satırlarını çıkar; sıradan İngilizce/Türkçe cümleleri
+    # "means that", "system" gibi genel kelimeler yüzünden silme.
+    satirlar = metin.splitlines()
+    satirlar = [satir for satir in satirlar
+                if not any(re.search(kalip, satir) for kalip in _SIZINTI_KALIPLARI)]
+    metin = "\n".join(satirlar)
 
     metin = konusma_etiketlerini_temizle(metin)
     metin = re.sub(r"\[[^\]\n]{0,40}\]", "", metin)
