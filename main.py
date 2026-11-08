@@ -279,12 +279,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not yetkili_mi(update):
         return
     metin = (
-        "❤️ *Laila'nın dünyasına hoş geldin!\n\n"
+        "❤️ Laila'nın dünyasına hoş geldin!\n\n"
         "Her karakterin kendine ait bir kişiliği ve hikâyesi var. "
         "Önce karakterleri keşfet, sonra tanışmak istediğini seç."
     )
     klavye = InlineKeyboardMarkup([[InlineKeyboardButton("✨ Karakterleri keşfet", callback_data="gal_0")]])
-    await update.effective_message.reply_text(metin, parse_mode="Markdown", reply_markup=klavye)
+    # Bu mesajda Markdown kullanmıyoruz; Telegram entity ayrıştırma hatasını önler.
+    await update.effective_message.reply_text(metin, reply_markup=klavye)
 
 async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sayfa: int):
     """Her sayfada iki karakter gösterir; gezinme ve tanışma butonları ayrı mesajdadır."""
@@ -307,7 +308,7 @@ async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sa
             logging.warning("%s galeri fotoğrafı üretilemedi: %s", isim, foto)
             klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
             continue
-        medya.append(InputMediaPhoto(media=foto, caption=f"*{isim}*\n{tanitim}", parse_mode="Markdown"))
+        medya.append(InputMediaPhoto(media=foto, caption=f"{isim}\n{tanitim}"))
         klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
 
     if medya:
@@ -315,7 +316,7 @@ async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sa
             item = medya[0]
             await context.bot.send_photo(
                 chat_id=query.message.chat_id, photo=item.media,
-                caption=item.caption, parse_mode=item.parse_mode,
+                caption=item.caption,
             )
         else:
             await context.bot.send_media_group(chat_id=query.message.chat_id, media=medya)
