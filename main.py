@@ -254,19 +254,20 @@ async def cevabi_ilet(bot, chat_id: int, dusunce: str, cevap: str):
     await mesajlari_gonder(bot, chat_id, dusunce, cevap)
 
 
-# --- Başlangıç Menüsü ---
+# --- Başlangıç Menüsü: sade karşılama + sayfalı karakter galerisi ---
 KARAKTER_KISA_TANITIM = {
-    "leyla": "Kitapçı, zarif ve ilk başta biraz mesafeli.",
+    "leyla": "Kitapçı; zarif, ölçülü ve zamanla sıcak.",
     "merve": "Enerjik, zeki, esprili ve biraz asi.",
     "asli": "Kendinden emin, başarılı ve şık bir yönetici.",
     "dilek": "Şefkatli, sabırlı ve iyi bir dinleyici.",
-    "ece": "Gizemli, meraklı, felsefe ve astroloji tutkunu.",
+    "ece": "Gizemli, meraklı; felsefe ve astroloji tutkunu.",
     "ayse": "Neşeli, sıcak ve mahallenin haber merkezi.",
     "dondu": "Bilge, otoriter ve koruyucu sürü lideri.",
 }
+GALERI_SAYFA_BOYUTU = 2
 
 async def _karakter_galeri_fotografi(key: str, karakter: dict, semaphore: asyncio.Semaphore):
-    """Önce kayıtlı Telegram fotoğrafını kullanır; yoksa karakter için yeni görsel üretir."""
+    """Önce kayıtlı Telegram fotoğrafını kullanır; yoksa yeni görsel üretir."""
     havuz = FOTO_HAVUZU.get(key, [])
     if havuz:
         return random.choice(havuz)
@@ -274,59 +275,61 @@ async def _karakter_galeri_fotografi(key: str, karakter: dict, semaphore: asynci
         return await foto_uret_bytes(karakter, int(karakter.get("seed", random.randint(1, 999999))))
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Laila karşılama mesajı ve tüm karakterlerin fotoğraflı galerisi."""
+    """Sade karşılama ekranını gösterir; galeri kullanıcı isteyince açılır."""
     if not yetkili_mi(update):
         return
-
-    chat_id = update.effective_chat.id
-    hosgeldin = (
-        "❤️ *Laila'nın dünyasına hoş geldin!*\n\n"
-        "Her karakterin ayrı bir kişiliği, geçmişi ve hikâyesi var. "
-        "Fotoğraflara göz at, ardından tanışmak istediğin karakteri seç."
+    metin = (
+        "❤️ *Laila'nın dünyasına hoş geldin!\n\n"
+        "Her karakterin kendine ait bir kişiliği ve hikâyesi var. "
+        "Önce karakterleri keşfet, sonra tanışmak istediğini seç."
     )
-    await update.effective_message.reply_text(hosgeldin, parse_mode="Markdown")
-    await context.bot.send_chat_action(chat_id=chat_id, action="upload_photo")
+    klavye = InlineKeyboardMarkup([[InlineKeyboardButton("✨ Karakterleri keşfet", callback_data="gal_0")]])
+    await update.effective_message.reply_text(metin, parse_mode="Markdown", reply_markup=klavye)
 
-    medya = []
-    hatalar = []
-    semaphore = asyncio.Semaphore(2)  # Görsel sağlayıcılarını aynı anda aşırı yükleme.
+async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sayfa: int):
+    """Her sayfada iki karakter gösterir; gezinme ve tanışma butonları ayrı mesajdadır."""
     keys = list(KARAKTERLER.keys())
+    toplam_sayfa = max(1, (len(keys) + GALERI_SAYFA_BOYUTU - 1) // GALERI_SAYFA_BOYUTU)
+    sayfa = max(0, min(sayfa, toplam_sayfa - 1))
+    secilenler = keys[sayfa * GALERI_SAYFA_BOYUTU:(sayfa + 1) * GALERI_SAYFA_BOYUTU]
+    semaphore = asyncio.Semaphore(2)
     sonuclar = await asyncio.gather(
-        *[_karakter_galeri_fotografi(key, KARAKTERLER[key], semaphore) for key in keys],
+        *[_karakter_galeri_fotografi(key, KARAKTERLER[key], semaphore) for key in secilenler],
         return_exceptions=True,
     )
-
-    for key, foto in zip(keys, sonuclar):
-        isim = KARAKTERLER[key]["isim"]
+    medya = []
+    klavye = []
+    for key, foto in zip(secilenler, sonuclar):
+        karakter = KARAKTERLER[key]
+        isim = karakter["isim"]
         tanitim = KARAKTER_KISA_TANITIM.get(key, "Kendi hikâyesi olan bir karakter.")
-        if isinstance(foto, Exception):
-            hatalar.append(isim)
-            logging.warning(f"{isim} galeri fotoğrafı üretilemedi: {foto}")
+        if isinstance(foto, Exception) or not foto:
+            logging.warning("%s galeri fotoğrafı üretilemedi: %s", isim, foto)
+            klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
             continue
         medya.append(InputMediaPhoto(media=foto, caption=f"*{isim}*\n{tanitim}", parse_mode="Markdown"))
+        klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
 
-    if len(medya) >= 2:
-        # Telegram medya grupları 2-10 öğe kabul eder; yedi karakter tek gruba sığar.
-        await context.bot.send_media_group(chat_id=chat_id, media=medya)
-    elif len(medya) == 1:
-        tek = medya[0]
-        await context.bot.send_photo(
-            chat_id=chat_id, photo=tek.media, caption=tek.caption, parse_mode=tek.parse_mode
-        )
+    if medya:
+        if len(medya) == 1:
+            item = medya[0]
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id, photo=item.media,
+                caption=item.caption, parse_mode=item.parse_mode,
+            )
+        else:
+            await context.bot.send_media_group(chat_id=query.message.chat_id, media=medya)
 
-    klavye = [
-        [InlineKeyboardButton(f"{KARAKTERLER[key]['isim']} ile tanış", callback_data=f"sec_{key}")]
-        for key in keys
-    ]
-    secim_metni = "👇 *Tanışmak istediğin karakteri seç:*"
-    if hatalar:
-        secim_metni += "\n\n_Not: Bazı karakter fotoğrafları şu an oluşturulamadı; seçim yine de kullanılabilir._"
-    if not medya:
-        secim_metni = hosgeldin + "\n\n" + secim_metni
+    gezinme = []
+    if sayfa > 0:
+        gezinme.append(InlineKeyboardButton("⬅️ Önceki", callback_data=f"gal_{sayfa-1}"))
+    gezinme.append(InlineKeyboardButton(f"{sayfa+1}/{toplam_sayfa}", callback_data="gal_bilgi"))
+    if sayfa < toplam_sayfa - 1:
+        gezinme.append(InlineKeyboardButton("Sonraki ➡️", callback_data=f"gal_{sayfa+1}"))
+    klavye.append(gezinme)
     await context.bot.send_message(
-        chat_id=chat_id,
-        text=secim_metni,
-        parse_mode="Markdown",
+        chat_id=query.message.chat_id,
+        text="Tanışmak istediğin karakteri seç:",
         reply_markup=InlineKeyboardMarkup(klavye),
     )
 
@@ -551,6 +554,17 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not yetkili_mi(update):
         return
     user_id = query.from_user.id
+
+    if query.data.startswith("gal_"):
+        parca = query.data.split("_", 1)[1]
+        if parca == "bilgi":
+            return
+        try:
+            sayfa = int(parca)
+        except ValueError:
+            return
+        await karakter_galerisi_goster(query, context, sayfa)
+        return
 
     if query.data.startswith('sec_'):
         secilen_karakter = query.data.split('_')[1]
