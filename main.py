@@ -32,6 +32,7 @@ from memory import *
 from relationship import *
 from emotions import *
 from world import *
+from proactive import proaktif_dongu
 
 # Gemma için özellikle kısa, açık ve öncelikli Türkçe üretim talimatı.
 GEMMA_TURKCE_KILAVUZU = (
@@ -1538,97 +1539,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await mesaji_isle(update, context, update.message.text)
 
 
-# --- KENDİLİĞİNDEN MESAJ ATMA ---
-async def proaktif_kontrol(app):
-    simdi = datetime.now(TZ)
-    (bas_s, bas_d), (bit_s, bit_d) = PROAKTIF_SAAT_ARALIGI
-    dakika = simdi.hour * 60 + simdi.minute
-    if not (bas_s * 60 + bas_d <= dakika < bit_s * 60 + bit_d):
-        return
-
-    bugun = simdi.strftime("%Y-%m-%d")
-    for user_id, d in list(kullanici_durumu.items()):
-        if not d.get("chat_id"):
-            continue
-        if d["cevapsiz"] >= 2:  # iki kez cevapsız kaldıysa sen yazana kadar bekler
-            continue
-        if d["proaktif_gun"] != bugun:
-            d["proaktif_gun"] = bugun
-            d["proaktif_sayi"] = 0
-        if d["proaktif_sayi"] >= PROAKTIF_GUNLUK_LIMIT:
-            continue
-
-        sessizlik = time.time() - d["son_etkilesim"]
-        if sessizlik < d["proaktif_esik"]:
-            continue
-
-        karakter_key = d["karakter"]
-        karakter = KARAKTERLER[karakter_key]
-        chat_id = d["chat_id"]
-        saat = max(1, int(sessizlik // 3600))
-        sev = yakinlik_seviyesi(yakinlik_puani(d, karakter_key))
-        foto_atsin = (
-            random.random() < PROAKTIF_FOTO_ORANLARI[sev]
-            and time.time() - d.get("son_proaktif_foto", 0) > PROAKTIF_FOTO_ARALIK
-        )
-
-        ekstra = (
-            f"Kullanıcı yaklaşık {saat} saattir sana yazmadı. Onun yazmasını BEKLEMEDEN ilk mesajı sen at. "
-            "Çok kısa ve doğal ol: biraz özlemiş olabilirsin, ne yaptığını merak edebilirsin ya da şu anki durumundan bir kesit paylaşabilirsin "
-            "(örneğin 'nerdesin ya', 'az önce şunu gördüm'). Kendini tanıtma, selam verip nutuk atma; en fazla 1-2 kısa mesaj yaz. KESİN KURAL: Hareketler *yıldız* içinde. Türkçe cevap ver, İngilizce düşünce yazma. İnsan karakterleri için: kuyruk sallama, havlama gibi hayvan davranışı yasak."
-        )
-        if d.get("stil", "hikaye") == "hikaye":
-            ekstra = (
-                f"Kullanıcı yaklaşık {saat} saattir hikâyeye dönmedi. Hikâyeyi sen canlandır: mevcut sahnede küçük bir gelişme anlat (*hareket*) "
-                "ve kullanıcıya sözle seslen. Kısa ol (2-3 cümle), kendini tanıtma."
-            )
-        if foto_atsin:
-            ekstra += " Mesajının yanında bir fotoğraf da göndereceksin, bunu kısaca ima edebilirsin."
-
-        try:
-            dusunce, cevap = await llm_cevap(
-                karakter_key, hafiza_al(d),
-                "(Bir süredir sessizlik var. İlk mesajı sen at.)",
-                ekstra_sistem=ekstra,
-                puan=yakinlik_puani(d, karakter_key),
-                stil=d.get("stil", "hikaye"),
-                sahne=d["sahneler"].get(karakter_key),
-                duygu_notu=duygu_ozeti(d, karakter_key),
-                dunya_notu=dunya_ozeti(d, karakter_key),
-            )
-            await cevabi_ilet(app.bot, chat_id, dusunce, cevap)
-            if foto_atsin:
-                try:
-                    await foto_gonder(app.bot, chat_id, karakter, yakinlik=sev)
-                    d["son_proaktif_foto"] = time.time()
-                except Exception as img_error:
-                    logging.error(f"Proaktif görsel hatası: {img_error}")
-
-            d_hafiza = hafiza_al(d)
-            d_hafiza.append({"role": "assistant", "content": hafiza_kaydi(dusunce, cevap)})
-            hafizayi_kirp(d_hafiza)
-            d["cevapsiz"] += 1
-            d["proaktif_sayi"] += 1
-            d["son_etkilesim"] = time.time()
-            esik_belirle(d)
-            await durum_kaydet(user_id)
-            logging.info(f"{karakter['isim']} kendiliğinden mesaj attı.")
-        except Exception as e:
-            logging.error(f"Proaktif mesaj hatası: {e}")
-            # 15 dakika sonra tekrar dene
-            d["son_etkilesim"] = time.time() - d["proaktif_esik"] + 900
-
-
-async def proaktif_dongu(app):
-    await asyncio.sleep(60)
-    while True:
-        try:
-            await proaktif_kontrol(app)
-        except Exception as e:
-            logging.error(f"Proaktif döngü hatası: {e}")
-        await asyncio.sleep(300)  # 5 dakikada bir kontrol
-
-
 async def post_init(app):
     if DB_AKTIF:
         try:
@@ -1652,7 +1562,30 @@ async def post_init(app):
     logging.info("Türkçe düzeltme geçişi: " + ("açık." if TURKCE_DUZELT else "kapalı."))
 
     if PROAKTIF_ACIK:
-        app.bot_data["proaktif_task"] = asyncio.create_task(proaktif_dongu(app))
+        proaktif_baglam = {
+            "TZ": TZ,
+            "PROAKTIF_SAAT_ARALIGI": PROAKTIF_SAAT_ARALIGI,
+            "PROAKTIF_GUNLUK_LIMIT": PROAKTIF_GUNLUK_LIMIT,
+            "PROAKTIF_FOTO_ORANLARI": PROAKTIF_FOTO_ORANLARI,
+            "PROAKTIF_FOTO_ARALIK": PROAKTIF_FOTO_ARALIK,
+            "kullanici_durumu": kullanici_durumu,
+            "KARAKTERLER": KARAKTERLER,
+            "yakinlik_seviyesi": yakinlik_seviyesi,
+            "yakinlik_puani": yakinlik_puani,
+            "llm_cevap": llm_cevap,
+            "hafiza_al": hafiza_al,
+            "duygu_ozeti": duygu_ozeti,
+            "dunya_ozeti": dunya_ozeti,
+            "cevabi_ilet": cevabi_ilet,
+            "foto_gonder": foto_gonder,
+            "hafiza_kaydi": hafiza_kaydi,
+            "hafizayi_kirp": hafizayi_kirp,
+            "esik_belirle": esik_belirle,
+            "durum_kaydet": durum_kaydet,
+        }
+        app.bot_data["proaktif_task"] = asyncio.create_task(
+            proaktif_dongu(app, proaktif_baglam)
+        )
         logging.info("Kendiliğinden mesaj özelliği açık.")
 
 
