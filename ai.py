@@ -210,6 +210,7 @@ HORDE_EN_BASLIK_METNI = (
     "İç düşünce, analiz, plan, İngilizce açıklama veya konuşmacı etiketi yazma."
 )
 AI_HORDE_KALITE_KONTROL = os.getenv("AI_HORDE_KALITE_KONTROL", "1") != "0"  # bozuk çıktıyı Pollinations'a yönlendir
+POLLINATIONS_YEDEK_ACIK = os.getenv("POLLINATIONS_YEDEK_ACIK", "0") == "1"  # Varsayılan kapalı; Render'dan 1 yapınca açılır.
 # Cloudflare, Python'un varsayılan User-Agent'ını (Python-urllib) engelliyor (hata 1010). Kendi User-Agent'ımızı gönderiyoruz.
 AI_HORDE_USER_AGENT = os.getenv("AI_HORDE_USER_AGENT", "Mozilla/5.0 (compatible; LailaTelegramBot/1.0)").strip()
 _horde_hata_sayisi = 0
@@ -613,16 +614,20 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         except Exception as e:
             horde_sonuc = None
             _horde_hata_sayisi += 1
-            logging.warning(f"AI Horde kullanılamadı, Pollinations deneniyor: {e}")
+            logging.warning(f"AI Horde kullanılamadı: {e}")
             if _horde_hata_sayisi >= 2:
                 _horde_devre_disi_bitis = time.time() + 15 * 60
                 _horde_hata_sayisi = 0
                 logging.warning("AI Horde 15 dakika devre dışı bırakıldı.")
 
-    # 2) Pollinations (yedek ya da ana yol)
+    # 2) Pollinations yedeği: güvenlik için varsayılan kapalı; yalnızca Render'dan açılır.
     if horde_sonuc is not None:
         dusunce, cevap = horde_sonuc
+    elif not POLLINATIONS_YEDEK_ACIK:
+        logging.error("AI Horde yanıt vermedi ve Pollinations yedeği kapalı. Render'da POLLINATIONS_YEDEK_ACIK=1 yapılırsa yedek açılır.")
+        raise RuntimeError("AI Horde yanıt vermedi; Pollinations yedeği kapalı.")
     else:
+        logging.warning("AI Horde kullanılamadı; POLLINATIONS_YEDEK_ACIK=1 olduğu için Pollinations yedeği deneniyor.")
         parametreler = {"messages": messages, "model": LLM_MODEL}
         if LLM_SICAKLIK is not None:
             parametreler["temperature"] = LLM_SICAKLIK
