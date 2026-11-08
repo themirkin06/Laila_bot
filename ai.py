@@ -185,10 +185,11 @@ def _env_int(ad: str, varsayilan: int) -> int:
 
 
 AI_HORDE_ACIK = os.getenv("AI_HORDE_ACIK", "1") != "0"
-# Varsayılan AI Horde modeli: kullanıcı tarafından Türkçe rol yapma testiyle seçildi.
+# Varsayılan AI Horde modeli: Türkçe sohbet testi başarılı bulunan Qwen.
+# Render ortamında AI_HORDE_MODELS tanımlıysa ortam değişkeni önceliklidir.
 AI_HORDE_MODELS = os.getenv(
     "AI_HORDE_MODELS",
-    "koboldcpp/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M",
+    "huihui-qwen3.8-27b-abliterated",
 ).strip()
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
