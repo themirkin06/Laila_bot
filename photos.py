@@ -3,6 +3,7 @@ import asyncio
 import base64
 import json
 import logging
+import secrets
 import time
 import urllib.error
 import urllib.request
@@ -10,7 +11,10 @@ from io import BytesIO
 
 from PIL import Image, ImageOps
 
-from config import AI_HORDE_IMAGE_API_KEY, AI_HORDE_IMAGE_MAX_WAIT, AI_HORDE_IMAGE_MODEL
+from config import (
+    AI_HORDE_IMAGE_API_KEY, AI_HORDE_IMAGE_MAX_WAIT, AI_HORDE_IMAGE_MODEL,
+    CF_ACCOUNT_ID, CF_API_TOKEN, CF_AKTIF, CF_IMAGE_MODEL,
+)
 from characters import foto_promptu
 
 AI_HORDE_URL = "https://aihorde.net/api/v2"
@@ -125,6 +129,79 @@ def ai_horde_img2img_sync(prompt: str, seed: int, reference_image: bytes) -> byt
     raise TimeoutError(f"AI Horde img2img {AI_HORDE_IMAGE_MAX_WAIT} saniyede tamamlanmadı.")
 
 
+def cloudflare_img2img_sync(prompt: str, seed: int, reference_image: bytes) -> bytes:
+    """Generate or edit an image with Cloudflare Workers AI using a face reference."""
+    if not CF_AKTIF:
+        raise RuntimeError("Cloudflare fotoğraf üretimi için hesap kimliği ve API tokenı gerekli.")
+    with Image.open(BytesIO(reference_image)) as opened:
+        source = ImageOps.exif_transpose(opened).convert("RGB")
+    source.thumbnail((512, 512), Image.Resampling.LANCZOS)
+    output = BytesIO()
+    source.save(output, format="WEBP", quality=90, method=4)
+    reference = output.getvalue()
+
+    boundary = "----LailaWorkersAI" + secrets.token_hex(12)
+    chunks = []
+
+    def field(name: str, value: str) -> None:
+        chunks.extend((
+            f"--{boundary}\r\n".encode(),
+            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+            str(value).encode("utf-8"), b"\r\n",
+        ))
+
+    field("prompt", prompt)
+    field("width", "1024")
+    field("height", "1024")
+    field("seed", str(seed))
+    chunks.extend((
+        f"--{boundary}\r\n".encode(),
+        b'Content-Disposition: form-data; name="input_image_0"; filename="reference.webp"\r\n',
+        b"Content-Type: image/webp\r\n\r\n", reference, b"\r\n",
+        f"--{boundary}--\r\n".encode(),
+    ))
+    body = b"".join(chunks)
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}"
+        f"/ai/run/{CF_IMAGE_MODEL}"
+    )
+    request = urllib.request.Request(
+        url, data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {CF_API_TOKEN}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Accept": "application/json, image/*",
+            "User-Agent": "Mozilla/5.0 (compatible; LailaTelegramBot/1.0)",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            raw = response.read()
+            content_type = response.headers.get("Content-Type", "")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:1000]
+        raise RuntimeError(f"Cloudflare Workers AI HTTP {exc.code}: {detail or exc.reason}") from exc
+    if content_type.startswith("image/"):
+        image = raw
+    else:
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("Cloudflare Workers AI geçersiz yanıt döndürdü.") from exc
+        result = data.get("result", data) if isinstance(data, dict) else {}
+        encoded = result.get("image") if isinstance(result, dict) else None
+        if not encoded:
+            detail = data.get("errors") or data.get("error") or "yanıtta image alanı yok"
+            raise RuntimeError(f"Cloudflare Workers AI görsel üretmedi: {detail}")
+        try:
+            image = base64.b64decode(encoded)
+        except Exception as exc:
+            raise RuntimeError("Cloudflare Workers AI görsel verisi çözümlenemedi.") from exc
+    if not image:
+        raise RuntimeError("Cloudflare Workers AI boş görsel döndürdü.")
+    return image
+
+
 async def foto_uret_bytes(
     karakter: dict, seed: int, yakinlik: int = 0, surpriz: bool = False,
     reference_image: bytes = None, scene_prompt: str = "",
@@ -140,4 +217,13 @@ async def foto_uret_bytes(
         )
     else:
         prompt = "Preserve the same adult woman's facial identity from the input image. " + prompt
+    if CF_AKTIF:
+        try:
+            image = await asyncio.to_thread(
+                cloudflare_img2img_sync, prompt, seed, reference_image
+            )
+            logging.info("Fotoğraf Cloudflare Workers AI üzerinden üretildi.")
+            return image
+        except Exception as exc:
+            logging.warning("Cloudflare fotoğraf üretimi başarısız; AI Horde deneniyor: %s", exc)
     return await asyncio.to_thread(ai_horde_img2img_sync, prompt, seed, reference_image)

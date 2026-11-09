@@ -31,11 +31,13 @@ UPSTASH_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "").strip()
 DB_AKTIF = bool(UPSTASH_URL and UPSTASH_TOKEN)
 DB_ANAHTAR_ONEK = "bot:durum:"
 
-# Daha gerçekçi fotoğraflar için Cloudflare Workers AI (FLUX). İkisi de doluysa önce o denenir,
-# olmazsa Pollinations'a düşer.
+# Fotoğraf üretiminde önce Cloudflare Workers AI denenir; hata olursa AI Horde yedek olur.
 CF_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
 CF_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
 CF_AKTIF = bool(CF_ACCOUNT_ID and CF_API_TOKEN)
+CF_IMAGE_MODEL = os.getenv(
+    "CLOUDFLARE_IMAGE_MODEL", "@cf/black-forest-labs/flux-2-klein-4b"
+).strip() or "@cf/black-forest-labs/flux-2-klein-4b"
 
 # Pollinations görsel ayarları. Anahtar chat için kullandığın POLLINATIONS_API_KEY ile aynı.
 # Model değiştirmek için Render'a POLLINATIONS_IMAGE_MODEL ekleyebilirsin (örn. flux, gptimage, seedream, nanobanana).
