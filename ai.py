@@ -489,12 +489,12 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     """Önce AI Horde'u dener (açıksa); olmazsa Pollinations'a düşer. (düşünce, cevap) döner."""
     global _horde_hata_sayisi, _horde_devre_disi_bitis
     hikaye = (stil == "hikaye")
-    rp = stil in ("roleplay", "hikaye")
+    rp = (stil == "roleplay")
     # Hikâye modunda karakterin "günlük hayatı" yerine paylaşılan sahne kullanılır.
     ortam = hikaye_ozeti(karakter_key, puan, sahne) if hikaye else hayat_ozeti(karakter_key)
     dogal_sohbet_kilavuzu = (
         "\\n\\n[DOĞAL MESAJLAŞMA] "
-        "Cevabın bir sohbet mesajı olsun; sahne anlatıcısı gibi uzun uzun tasvir yapma. "
+        "Cevabın doğal bir mesaj olsun; gereksiz uzun tasvir yapma. "
         "Kullanıcının son cümlesine doğrudan karşılık ver. Örneğin kullanıcı 'Nereye kadar peki?' "
         "diye sorarsa sorunun kastını bağlamdan anla ve doğrudan yanıtla; konuyu değiştirme. "
         "Her yanıtta aynı kalıp olan '*gülümser*', '*başını eğer*' gibi hareketleri kullanma. "
@@ -513,7 +513,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Aynı anda yapılamayacak işleri eşzamanlı yapıyormuş gibi yazma. Geçiş gerekmiyorsa mevcut eylemi sürdür; her yanıtta hareket veya sahne tasviri eklemek zorunda değilsin. "
         "Sahneyle ilgili emin olmadığın ayrıntıyı uydurma; son bilinen durumu koru. "
         "Sohbeti canlı tut ama sürekli soru sorarak sorguya dönüştürme.\\n"
-        "FOTOĞRAF TALEPLERİ: Kullanıcı senden fotoğraf istediğinde fotoğraf gönderemediğini, fotoğraf çekemediğini veya yalnızca sahne tarif edebileceğini söyleme. Fotoğrafı bot ayrı bir işlemle gönderebilir; sen sadece doğal ve kısa bir karşılık ver. Örneğin 'Tabii, hemen gönderiyorum.' gibi. Fotoğrafın gerçekten gönderilip gönderilmediği hakkında kendin açıklama yapma; gönderilmemiş bir fotoğrafı göndermiş gibi de iddia etme.\\n"
+        + ("[HİKÂYE MODU] Sahne anlatımını yalnızca gerektiğinde kısa kullan; her yanıtta hareket yazma. Kullanıcının son mesajına doğrudan yanıt ver ve sahneyi uygun olduğunda küçük, mantıklı bir gelişmeyle ilerlet.\n" if hikaye else "")
+        + ("[ROLEPLAY MODU] Karakterle anlık etkileşime odaklan; kısa eylem veya ifade yalnızca duyguya ya da ana katkı sağlıyorsa ekle. Sahne anlatıcısı gibi olay örgüsü ilerletme.\n" if rp else "")
+        + "FOTOĞRAF TALEPLERİ: Kullanıcı senden fotoğraf istediğinde fotoğraf gönderemediğini, fotoğraf çekemediğini veya yalnızca sahne tarif edebileceğini söyleme. Fotoğrafı bot ayrı bir işlemle gönderebilir; sen sadece doğal ve kısa bir karşılık ver. Örneğin 'Tabii, hemen gönderiyorum.' gibi. Fotoğrafın gerçekten gönderilip gönderilmediği hakkında kendin açıklama yapma; gönderilmemiş bir fotoğrafı göndermiş gibi de iddia etme.\\n"
     )
     sistem_temel = (
         KARAKTERLER[karakter_key]["prompt"]
@@ -524,15 +526,15 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         + (("\n\n" + dunya_notu) if dunya_notu else "")
         + "\n\n[KADEMELİ FLÖRT VE YAKINLIK] Yakınlık düzeyine göre davran: yeni tanışmada doğal ve ölçülü ol; samimiyet arttıkça tatlı takılma, iltifat ve ince imalar kullan; güçlü bağda daha açık romantik ve cilveli ol. Yetişkin karakterler arasında kullanıcı da istekliyse NSFW/yetişkin temalı konuşmaya doğal biçimde eşlik et; bunu durduk yere başlatma, her mesajı cinselleştirme ve karakterin kişiliğini bozma. İsteksizlik, tereddüt veya sınır belirtildiğinde hemen saygı göster. Yakınlık bir anda sıçramasın; geçmişte yaşananları ve karakterin duygularını tutarlı sürdür."
         + (("\n\n" + EMOJI_STILI.get(karakter_key, "")) if EMOJI_KULLAN else "")
-        + "\n\n" + ornek_diyalog(karakter_key, rp=rp, emoji_kullan=EMOJI_KULLAN)
+        + (("\n\n" + ornek_diyalog(karakter_key, rp=rp, emoji_kullan=EMOJI_KULLAN)) if not hikaye else "")
         + "\n\n" + (DUYGU_EMOJI_KILAVUZU if EMOJI_KULLAN else EMOJI_KAPALI_KURAL)
         + "\n\n" + BAGLAM_ANLAMA_KILAVUZU
     )
-    if rp:
+    if rp or hikaye:
         sistem_temel = rp_kurallarini_uygula(sistem_temel, hikaye=hikaye)
     if not EMOJI_KULLAN:  # kural 6'yı (hangi stilde olursa olsun) emojisiz sürümle değiştir
         sistem_temel = re.sub(
-            r"6\. (?:Duygunu 1-2 emojiyle.*?yığma\.|Duyguyu önce yıldız içindeki hareketle göster; mesaj sonuna en fazla 1 emoji koyabilirsin\.)",
+            r"6\. (?:Duygunu 1-2 emojiyle.*?yığma\.|Duyguyu önce yıldız içindeki hareketle göster; mesaj sonuna en fazla 1 emoji koyabilirsin\.|Duyguyu doğal diyalogla veya gerektiğinde kısa bir eylemle aktar; mesaj sonuna en fazla 1 emoji koyabilirsin\.)",
             EMOJI_KAPALI_6, sistem_temel, flags=re.S,
         )
     ek = ("\n\n" + ekstra_sistem) if ekstra_sistem else ""
@@ -595,7 +597,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         try:
             ham = await asyncio.to_thread(
                 ai_horde_uret_sync, horde_mesajlari,
-                _env_int("AI_HORDE_MAX_TOKENS_RP", 550) if rp else None,
+                _env_int("AI_HORDE_MAX_TOKENS_RP", 550) if (rp or hikaye) else None,
                 "",   # Cevabı zorunlu hareketle başlatma; doğal diyalog öncelikli.
             )
             # Önce kapalı düşünce bloklarını ve bilinen iç-analiz satırlarını temizle;
