@@ -712,10 +712,16 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             metin = f"{karakter_adi} ile kaldığınız yerden devam ediyorsun. Hadi bir şeyler yaz..."
         else:
             metin = f"Harika! Şu an {karakter_adi} ile konuşuyorsun. Hadi bir şeyler yaz..."
-        if query.message and query.message.photo:
-            await query.edit_message_caption(caption=metin)
-        else:
-            await query.edit_message_text(text=metin)
+        # Karakter seçilince galeri fotoğraflarını ve seçim/gezinti mesajını temizle.
+        galeri_mesaj_idleri = context.user_data.pop("laila_galeri_mesaj_idleri", [])
+        if query.message and query.message.message_id not in galeri_mesaj_idleri:
+            galeri_mesaj_idleri.append(query.message.message_id)
+        for mesaj_id in galeri_mesaj_idleri:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=mesaj_id)
+            except Exception as exc:
+                logging.debug("Seçim sonrası galeri mesajı silinemedi (%s): %s", mesaj_id, exc)
+        await context.bot.send_message(chat_id=chat_id, text=metin)
         await durum_kaydet(user_id)
 
         # Hikâye modunda ilk kez konuşuluyorsa sahne girişi gönderilir
