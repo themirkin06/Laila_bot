@@ -2,7 +2,8 @@
 import os
 import random
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pollinations import Pollinations
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -13,7 +14,7 @@ client = Pollinations(api_key=os.getenv("POLLINATIONS_API_KEY"))
 OWNER_ID = int(os.getenv("OWNER_ID", "0") or 0)
 
 HAFIZA_LIMITI = 40
-TZ = timezone(timedelta(hours=3))  # Türkiye saati
+TZ = ZoneInfo("Europe/Istanbul")  # Türkiye'nin kurallarıyla gerçek yerel saat
 
 # Kendiliğinden mesaj atma ayarları
 PROAKTIF_ACIK = os.getenv("PROAKTIF_ACIK", "1") != "0"
