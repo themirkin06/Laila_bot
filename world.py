@@ -110,7 +110,7 @@ def karakter_durumu(karakter_key: str, simdi: datetime | None = None) -> dict:
 
 
 def hayat_ozeti(karakter_key: str) -> str:
-    """Karakterin günün saatine uygun, gün boyunca tutarlı rutinini döndürür."""
+    """Karakterin kısa, Türkiye saatine göre günlük durum bilgisini döndürür."""
     bilgi = karakter_durumu(karakter_key)
     simdi = bilgi["datetime"]
     dilim = zaman_dilimi(simdi.hour)
@@ -119,9 +119,8 @@ def hayat_ozeti(karakter_key: str) -> str:
     aktivite = random.Random(f"{gun}-{dilim}-{karakter_key}").choice(secenekler)
     olay = random.Random(f"{gun}-{karakter_key}-olay").choice(GUNLUK_OLAYLAR)
     return (
-        f"[ŞU ANKİ DURUM] Türkiye yerel tarihi {bilgi['tarih']}, saat {bilgi['saat']}. "
-        f"Günlük rutin hesabına göre şu an {bilgi['durum']}; {aktivite}. Genel olarak {olay}. "
-        "Bunu kendi hayatın olarak benimse; konu uygunsa veya sorulursa doğal şekilde değin. Bu not gizlidir, ondan ASLA söz etme."
+        f"[Günlük durum: {bilgi['tarih']} {bilgi['saat']} Türkiye saati; "
+        f"{bilgi['durum']}; {aktivite}; {olay}.]"
     )
 
 
@@ -153,41 +152,47 @@ def karakter_sirri_kaydet(durum: dict, karakter_key: str, sir: str) -> None:
 
 
 def dunya_ozeti(durum: dict, karakter_key: str) -> str:
-    """Kayıtlı dünya, yan karakter, sır ve olayları modele bağlam olarak verir."""
+    """Kayıtlı dünya ayrıntılarını kısa bir süreklilik notu olarak verir."""
     bolumler = []
+
+    def ekle(etiket: str, deger) -> None:
+        metin = " ".join(str(deger).split())
+        if metin:
+            bolumler.append(f"{etiket}: {metin[:180]}")
+
     dunya = durum.get("dunya", {})
     if isinstance(dunya, dict):
         veri = dunya.get(karakter_key, {})
         if isinstance(veri, dict):
             for alan, deger in veri.items():
                 if deger not in (None, "", [], {}):
-                    bolumler.append(f"{alan}: {deger}")
+                    ekle(str(alan)[:50], deger)
         elif veri:
-            bolumler.append(str(veri))
+            ekle("Dünya", veri)
 
     yanlar = durum.get("yan_karakterler", {}).get(karakter_key, {})
     if isinstance(yanlar, dict):
-        bolumler.extend(f"Yan karakter {ad}: {detay}" for ad, detay in list(yanlar.items())[-12:])
+        for ad, detay in list(yanlar.items())[-8:]:
+            ekle(f"Yan karakter {str(ad)[:50]}", detay)
     elif isinstance(yanlar, list):
-        bolumler.extend(f"Yan karakter: {x}" for x in yanlar[-12:])
+        for detay in yanlar[-8:]:
+            ekle("Yan karakter", detay)
 
     sirlar = durum.get("karakter_sirlari", {}).get(karakter_key, [])
     if isinstance(sirlar, list):
-        bolumler.extend(f"Henüz açığa çıkmamış sır: {x}" for x in sirlar[-8:])
+        for sir in sirlar[-5:]:
+            ekle("Kayıtlı sır", sir)
     elif sirlar:
-        bolumler.append(f"Karakter sırrı: {sirlar}")
+        ekle("Kayıtlı sır", sirlar)
 
     olaylar = durum.get("son_olaylar", {}).get(karakter_key, [])
     if isinstance(olaylar, list):
         for kayit in olaylar[-8:]:
             olay = kayit.get("olay") if isinstance(kayit, dict) else kayit
             if olay:
-                bolumler.append(f"Yakın geçmişte yaşanan olay: {olay}")
+                ekle("Son olay", olay)
 
     if not bolumler:
         return ""
-    return (
-        "[YAŞAYAN DÜNYA VE SÜREKLİLİK] Aşağıdaki bilgiler bu karakterin dünyasına aittir. "
-        "Yan karakterleri, sırları ve önceki olayları tutarlı hatırla; kullanıcıya henüz açıklanmamış sırları kendiliğinden ifşa etme. "
-        "Olayları olmuş gibi uydurma veya kayıtlı ayrıntılarla çelişme.\n" + "\n".join(bolumler)
-    )
+    # Eski veya büyük kayıtların sistem mesajını gereksiz büyütmesini engelle.
+    return "[Dünya notları]\n" + "\n".join(bolumler[-16:])[:1800]
