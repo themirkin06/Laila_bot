@@ -2,3 +2,4 @@ python-telegram-bot
 requests
 pollinations-client
 curl_cffi
+Pillow>=10.0.0

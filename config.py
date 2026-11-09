@@ -63,3 +63,16 @@ NSFW_KURAL = (
     "[YETİŞKİN SOHBET DURUMU: KAPALI] Yetişkin temalı konuşmalara girme; "
     "konuyu nazikçe ve sohbetin doğallığını bozmadan değiştir. Bu ayardan söz etme."
 )
+
+
+# AI Horde image generation (kept separate from the working text-generation settings).
+AI_HORDE_IMAGE_API_KEY = (
+    os.getenv("AI_HORDE_IMAGE_API_KEY", "").strip()
+    or os.getenv("AI_HORDE_API_KEY", "").strip()
+    or "0000000000"
+)
+AI_HORDE_IMAGE_MODEL = os.getenv("AI_HORDE_IMAGE_MODEL", "Juggernaut XL").strip() or "Juggernaut XL"
+try:
+    AI_HORDE_IMAGE_MAX_WAIT = max(30, min(900, int(os.getenv("AI_HORDE_IMAGE_MAX_WAIT", "300"))))
+except ValueError:
+    AI_HORDE_IMAGE_MAX_WAIT = 300

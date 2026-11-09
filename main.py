@@ -334,13 +334,19 @@ KARAKTER_KISA_TANITIM = {
 }
 GALERI_SAYFA_BOYUTU = 2
 
-async def _karakter_galeri_fotografi(key: str, karakter: dict, semaphore: asyncio.Semaphore):
-    """Önce kayıtlı Telegram fotoğrafını kullanır; yoksa yeni görsel üretir."""
+async def _karakter_galeri_fotografi(key: str, karakter: dict, semaphore: asyncio.Semaphore, bot):
+    """Use the character's own reference for new gallery img2img photos."""
     havuz = FOTO_HAVUZU.get(key, [])
-    if havuz:
-        return random.choice(havuz)
+    reference_file_id = YUZ_REFERANSLARI.get(key) or (havuz[0] if havuz else None)
+    if not reference_file_id:
+        raise RuntimeError(f"{karakter['isim']} için yüz referansı kayıtlı değil.")
     async with semaphore:
-        return await foto_uret_bytes(karakter, int(karakter.get("seed", random.randint(1, 999999))))
+        telegram_file = await bot.get_file(reference_file_id)
+        reference_bytes = bytes(await telegram_file.download_as_bytearray())
+        return await foto_uret_bytes(
+            karakter, int(karakter.get("seed", random.randint(1, 999999))),
+            reference_image=reference_bytes,
+        )
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sade karşılama ekranını gösterir; galeri kullanıcı isteyince açılır."""
@@ -374,7 +380,7 @@ async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sa
     secilenler = keys[sayfa * GALERI_SAYFA_BOYUTU:(sayfa + 1) * GALERI_SAYFA_BOYUTU]
     semaphore = asyncio.Semaphore(2)
     sonuclar = await asyncio.gather(
-        *[_karakter_galeri_fotografi(key, KARAKTERLER[key], semaphore) for key in secilenler],
+        *[_karakter_galeri_fotografi(key, KARAKTERLER[key], semaphore, context.bot) for key in secilenler],
         return_exceptions=True,
     )
     medya = []
@@ -922,7 +928,7 @@ async def post_init(app):
     else:
         logging.warning("UPSTASH_REDIS_REST_URL/TOKEN yok: hafıza sadece RAM'de, yeniden başlayınca silinir.")
 
-    logging.info("Fotoğraf: Cloudflare FLUX " + ("açık." if CF_AKTIF else "kapalı, Pollinations kullanılacak."))
+    logging.info(f"Fotoğraf: AI Horde img2img açık ({AI_HORDE_IMAGE_MODEL}; denoise 0.40, 25 steps, CFG 6).")
     logging.info("AI Horde: " + ("açık (anahtar " + ("var" if AI_HORDE_KEY != "0000000000" else "yok, anonim") + ")." if AI_HORDE_ACIK else "kapalı."))
     logging.info("Emoji: " + ("açık." if EMOJI_KULLAN else "kapalı."))
     logging.info("NSFW durumu: " + ("AÇIK (tüm karakterler)." if NSFW_ACIK else "KAPALI."))
