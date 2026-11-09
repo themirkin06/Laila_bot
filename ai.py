@@ -358,8 +358,13 @@ def horde_prompt_olustur(messages: list, on_ek: str = ""):
         parcalar.append(("Asistan: " if r == "assistant" else "Kullanıcı: ") + t)
     return "\n\n".join(parcalar) + "\n\nAsistan:" + ((" " + on_ek) if on_ek else ""), ["\nKullanıcı:", "\nTalimatlar:", "\nAsistan:"]
 def dusunce_bloklarini_sil(metin: str) -> str:
-    """<think>...</think> gibi kapalı düşünce bloklarını siler."""
+    """Kapalı düşünce bloklarını ve kapanmamış bloğun kalanını siler."""
     metin = re.sub(r"<\s*(think|thinking|thought|reasoning)\s*>.*?<\s*/\s*\1\s*>", "", metin, flags=re.S | re.I)
+    # Bazı Horde çıktıları kapanış etiketi olmadan kesilir. Açılıştan sonrası
+    # iç düşünce olabileceğinden, kullanıcıya gidecek aday yanıttan çıkar.
+    acik = re.search(r"<\s*(?:think|thinking|thought|reasoning)\s*>", metin, flags=re.I)
+    if acik:
+        metin = metin[:acik.start()]
     return metin.strip()
 
 
