@@ -600,18 +600,29 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             + [messages[-1]]
         )
         try:
-            ham = await asyncio.to_thread(
-                ai_horde_uret_sync, horde_mesajlari,
-                _env_int("AI_HORDE_MAX_TOKENS_RP", 550) if (rp or hikaye) else None,
-                "",   # Cevabı zorunlu hareketle başlatma; doğal diyalog öncelikli.
+            token_limiti = (
+                _env_int("AI_HORDE_MAX_TOKENS_RP", 550)
+                if (rp or hikaye)
+                else _env_int("AI_HORDE_MAX_TOKENS", 450)
             )
-            # Önce kapalı düşünce bloklarını ve bilinen iç-analiz satırlarını temizle;
-            # kalite kontrolünü ham metin yerine kullanıcıya gösterilecek aday cevapta yap.
-            ham = dusunce_bloklarini_sil(ham)
-            aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
-            sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
-            if sebep:
-                raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
+            aday = ""
+            for deneme in range(2):
+                max_token = token_limiti if deneme == 0 else max(token_limiti + 1, min(token_limiti * 2, 1200))
+                ham = await asyncio.to_thread(
+                    ai_horde_uret_sync, horde_mesajlari, max_token,
+                    "",   # Cevabı zorunlu hareketle başlatma; doğal diyalog öncelikli.
+                )
+                # Önce düşünce bloklarını temizle; yalnızca kullanıcıya gidecek
+                # aday yanıt üzerinde kalite kontrolü yap.
+                ham = dusunce_bloklarini_sil(ham)
+                aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
+                sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
+                if not aday and deneme == 0:
+                    logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
+                    continue
+                if sebep:
+                    raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
+                break
             temiz = aday
             if not temiz:
                 raise RuntimeError("Horde boş cevap döndürdü")
