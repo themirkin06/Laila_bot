@@ -93,11 +93,13 @@ def kullanici_profili_al(durum: dict) -> dict:
     profil.setdefault("ad", "")
     profil.setdefault("yas", None)
     profil.setdefault("bilgiler", [])
+    if not isinstance(profil["bilgiler"], list):
+        profil["bilgiler"] = []
     return profil
 
 
 def kullanici_bilgisi_ogren(durum: dict, mesaj: str):
-    """Yalnızca açık öz tanıtımlardan ad/yaş yakalar; tahmin yürütmez."""
+    """Açık öz tanıtım, yaş ve basit ilgi/tercih ifadelerini kaydeder; tahmin yürütmez."""
     import re
 
     profil = kullanici_profili_al(durum)
@@ -120,6 +122,33 @@ def kullanici_bilgisi_ogren(durum: dict, mesaj: str):
             if 18 <= yas <= 100:
                 profil["yas"] = yas
 
+    # Yalnızca açıkça ifade edilmiş ve düşük hassasiyetli ilgi/tercih cümlelerini sakla.
+    # Kişisel, finansal, sağlıkla ilgili veya başka hassas konuları kalıcı profile alma.
+    hassas = (
+        "şifre", "sifre", "parola", "tc kimlik", "kimlik numarası", "telefon numaram",
+        "adresim", "maaşım", "maasim", "borcum", "kredi kartı", "kredi kartim",
+        "hastalığım", "hastaligim", "ilaçlarım", "ilaclarim", "teşhis", "teshis",
+        "depresyon", "intihar", "cinsel", "siyasi görüş", "siyasi gorus",
+    )
+    if not any(terim in metin.casefold() for terim in hassas):
+        kaliplar = (
+            r"(?:en sevdiğim|en sevdigim|favorim)\s+([^.!?\n]{2,60})",
+            r"(?:hobim|ilgi alanım|ilgi alanlarım)\s+(?:ise\s+)?([^.!?\n]{2,60})",
+            r"(?:ben\s+)?([\wçğıöşüÇĞİÖŞÜ'’-]+(?:\s+[\wçğıöşüÇĞİÖŞÜ'’-]+){0,5}?)\s+(?:çok\s+)?(?:seviyorum|severim|tercih ederim|tercih ediyorum)\b",
+        )
+        for kalip in kaliplar:
+            eslesme = re.search(kalip, metin, re.IGNORECASE)
+            if not eslesme:
+                continue
+            bilgi = " ".join(eslesme.group(1).split()).strip(" \t,;:-")
+            if not bilgi or bilgi.casefold() in {"seni", "onu", "bunu", "kendimi"}:
+                continue
+            bilgiler = profil["bilgiler"]
+            if not any(str(kayit).casefold() == bilgi.casefold() for kayit in bilgiler):
+                bilgiler.append(bilgi)
+                del bilgiler[:-12]
+            break
+
     return profil
 
 
@@ -128,15 +157,19 @@ def kullanici_profili_prompt(durum: dict, telegram_adi: str = "") -> str:
     profil = kullanici_profili_al(durum)
     ad = profil.get("ad") or "henüz öğrenilmedi"
     yas = profil.get("yas") or "henüz öğrenilmedi"
+    bilgiler = profil.get("bilgiler", [])
     gorunen_ad = telegram_adi.strip() or "yok"
+    bilinenler = "; ".join(str(bilgi) for bilgi in bilgiler[-12:]) or "henüz öğrenilmedi"
     return (
         "[KULLANICI PROFİLİ — GERÇEK BİLGİLER]\n"
         f"Kullanıcının açıkça söylediği tercih ettiği ad: {ad}. Yaş: {yas}. "
+        f"Açıkça belirttiği ilgi ve tercihler: {bilinenler}. "
         f"Telegram görünen adı: {gorunen_ad} (bu, tercih ettiği ad olduğu anlamına gelmez).\n"
         "Bu alanlarda 'henüz öğrenilmedi' yazıyorsa tahmin etme veya uydurma. "
         "Kullanıcıyı doğal sohbet içinde tanımaya çalış; adını bilmiyorsan nasıl hitap etmeni istediğini sor. "
         "Yaşını yalnızca sohbetin akışına uygunsa sor; sorguya çevirme. "
-        "Kullanıcının söylediği bilgileri doğru kabul et, emin olmadığın çıkarımları gerçek gibi kaydetme."
+        "Hatırlanan ilgi ve tercihleri yalnızca konuya uyduğunda doğal biçimde kullan; liste gibi sayma veya aynı şeyi tekrar tekrar sorma. "
+        "Bunlar değişmiş olabilir; kullanıcı düzeltirse yeni söylediğini esas al. Kullanıcının söylemediği çıkarımları gerçek gibi kaydetme."
     )
 
 
