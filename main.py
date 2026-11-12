@@ -847,8 +847,27 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         )
         await cevabi_ilet(context.bot, chat_id, dusunce, cevap)
 
-        # Normal sohbet sırasında kendiliğinden fotoğraf gönderilmez.
-        # Otomatik fotoğraflar yalnızca proactive.py içindeki günlük sürprizlerden gelir.
+        # Yalnızca karakterin kendi yanıtında açık bir anlık eylem varsa sahne fotoğrafı gönder.
+        # Kullanıcı mesajı tek başına tetikleyici olmaz; böylece geçmiş/varsayımsal eylemlere fotoğraf gitmez.
+        bulunan_sahne = otomatik_foto_sahnesi_bul(cevap)
+        if bulunan_sahne:
+            sahne_key, sahne_prompt = bulunan_sahne
+            if otomatik_foto_gonderilmeli(durum, secilen_karakter, sahne_key):
+                try:
+                    await foto_gonder(
+                        context.bot, chat_id, karakter,
+                        yakinlik=yakinlik_seviyesi(yakinlik_puani(durum, secilen_karakter)),
+                        havuzdan=False, surpriz=True, scene_prompt=sahne_prompt,
+                    )
+                    durum.setdefault("otomatik_foto_kaydi", {})[secilen_karakter] = {
+                        "sahne": sahne_key, "zaman": time.time(),
+                    }
+                    await durum_kaydet(user_id)
+                    logging.info("Sohbet eylem fotoğrafı gönderildi: %s / %s", secilen_karakter, sahne_key)
+                except Exception as img_error:
+                    # Görsel üretim sorunu sohbet yanıtını başarısız kılmamalı.
+                    logging.warning("Sohbet eylem fotoğrafı gönderilemedi: %s", img_error)
+
 
         hafiza.append({"role": "user", "content": user_message})
         hafiza.append({"role": "assistant", "content": hafiza_kaydi(dusunce, cevap)})
