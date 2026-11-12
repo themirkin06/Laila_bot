@@ -236,13 +236,13 @@ async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
 # --- Sohbet içinden otomatik sahne fotoğrafı ---
 # Yalnızca karakterin kendi ağzından, şu anda yaptığı açıkça anlaşılan eylemler yakalanır.
 OTOMATIK_FOTO_SAHNELERI = [
-    ("cay_icme", re.compile(r"\b(çay içiyorum|çayımı içiyorum|çay içmeye başladım)\b", re.I),
+    ("cay_icme", re.compile(r"\b(çay içiyorum|çayımı içiyorum|çay içmeye başladım|çayımı yudumluyorum)\b", re.I),
      "drinking Turkish tea at home, holding a clear tulip-shaped tea glass, cozy natural setting"),
     ("cay_demleme", re.compile(r"\b(çay demliyorum|demlik hazırlıyorum|çay koyuyorum|çay hazırlıyorum|demliyorum)\b", re.I),
      "preparing and brewing Turkish tea in a home kitchen, tea kettle and teapot clearly visible"),
-    ("kahve", re.compile(r"\b(kahve yapıyorum|kahvemi hazırlıyorum|kahve pişiriyorum|kahve içiyorum)\b", re.I),
+    ("kahve", re.compile(r"\b(kahve yapıyorum|kahvemi hazırlıyorum|kahve pişiriyorum|kahve içiyorum|kahvemi yudumluyorum)\b", re.I),
      "making or drinking coffee in a cozy kitchen or cafe, coffee cup clearly visible"),
-    ("yemek", re.compile(r"\b(yemek yapıyorum|yemek hazırlıyorum|mutfakta.*pişiriyorum|yemek pişiriyorum)\b", re.I),
+    ("yemek", re.compile(r"\b(yemek yapıyorum|yemek hazırlıyorum|mutfakta.*pişiriyorum|yemek pişiriyorum|yemek yiyorum|kahvaltı yapıyorum|öğle yemeği yiyorum|akşam yemeği yiyorum|bir şeyler atıştırıyorum)\b", re.I),
      "cooking a meal in the kitchen, ingredients and cookware visible"),
     ("temizlik", re.compile(r"\b(temizlik yapıyorum|evi topluyorum|bulaşık yıkıyorum)\b", re.I),
      "doing ordinary housework at home, natural lived-in surroundings"),
@@ -254,7 +254,7 @@ OTOMATIK_FOTO_SAHNELERI = [
      "getting ready for bed in a cozy bedroom, modest sleepwear, warm bedside lighting"),
     ("hazirlik", re.compile(r"\b(giyiniyorum|hazırlanıyorum|makyaj yapıyorum|saçımı yapıyorum)\b", re.I),
      "getting ready in front of a bedroom mirror, everyday outfit and personal items visible"),
-    ("disari", re.compile(r"\b(dışarıdayım|dışarı çıktım|yürüyüş yapıyorum|sahildeyim|parkta yürüyorum)\b", re.I),
+    ("disari", re.compile(r"\b(dışarıdayım|dışarı çıktım|dışarıda yürüyorum|yürüyüş yapıyorum|yürüyüşe çıktım|biraz yürüyorum|sahildeyim|sahilde yürüyorum|parkta yürüyorum)\b", re.I),
      "out for a walk outdoors, natural street or park surroundings"),
     ("alisveris", re.compile(r"\b(alışveriş yapıyorum|marketteyim|pazara geldim)\b", re.I),
      "shopping in a grocery store or local market, natural candid setting"),
@@ -271,13 +271,13 @@ def otomatik_foto_sahnesi_bul(cevap: str):
 
 
 def otomatik_foto_gonderilmeli(durum: dict, karakter_key: str, sahne_key: str) -> bool:
-    """Aynı etkinlikte tekrarı önler; yeni sahneye kısa bir geçiş payı bırakır."""
+    """Aynı sahnenin tekrarını ve farklı sahneler arasında sık fotoğrafı önler."""
     kayitlar = durum.setdefault("otomatik_foto_kaydi", {})
     onceki = kayitlar.get(karakter_key, {})
     simdi = time.time()
     if onceki.get("sahne") == sahne_key and simdi - float(onceki.get("zaman", 0)) < 45 * 60:
         return False
-    if onceki and simdi - float(onceki.get("zaman", 0)) < 3 * 60:
+    if onceki and simdi - float(onceki.get("zaman", 0)) < 15 * 60:
         return False
     return True
 
