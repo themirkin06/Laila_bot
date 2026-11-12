@@ -305,18 +305,37 @@ def konusma_etiketlerini_temizle(metin: str) -> str:
                 break
         sonuc.append(satir)
     return "\n".join(sonuc).strip()
+def horde_model_aileleri() -> set:
+    """Seçili AI Horde modellerinin ailelerini belirler."""
+    modeller = [x.strip().lower() for x in AI_HORDE_MODELS.split(",") if x.strip()]
+    aileler = set()
+    for isim in modeller:
+        if "gemma" in isim or "tutu" in isim:
+            aileler.add("gemma")
+        elif any(k in isim for k in ("qwen", "magnum")):
+            aileler.add("qwen")
+        elif any(k in isim for k in ("stheno", "llama-3", "llama3", "l3-")):
+            aileler.add("llama")
+        else:
+            aileler.add("genel")
+    return aileler or {"genel"}
+
+
 def horde_sablonu_sec() -> str:
-    """Modelin beklediği sohbet formatı: duz, gemma, chatml ya da llama3. AI_HORDE_SABLON ile zorlanabilir."""
+    """Model ailesine uygun şablonu seçer; karışık ailelerde düz metin kullanır."""
     secim = os.getenv("AI_HORDE_SABLON", "").strip().lower()
     if secim in ("duz", "gemma", "chatml", "llama3"):
         return secim
-    isim = AI_HORDE_MODELS.lower()
-    if any(k in isim for k in ("stheno", "llama-3", "llama3", "l3-")):
-        return "llama3"
-    if any(k in isim for k in ("gemma", "tutu")):
+    aileler = horde_model_aileleri()
+    if len(aileler) > 1:
+        return "duz"
+    aile = next(iter(aileler))
+    if aile == "gemma":
         return "gemma"
-    if any(k in isim for k in ("magnum", "chatml", "qwen")):
+    if aile == "qwen":
         return "chatml"
+    if aile == "llama":
+        return "llama3"
     return "duz"
 
 
@@ -498,14 +517,14 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     # Hikâye modunda karakterin "günlük hayatı" yerine paylaşılan sahne kullanılır.
     ortam = hikaye_ozeti(karakter_key, puan, sahne) if hikaye else hayat_ozeti(karakter_key)
     dogal_sohbet_kilavuzu = (
-        "\\n\\n[DOĞAL MESAJLAŞMA] "
+        "\n\n[DOĞAL MESAJLAŞMA] "
         "Cevabın doğal bir mesaj olsun; gereksiz uzun tasvir yapma. "
         "Kullanıcının son cümlesine doğrudan karşılık ver. Örneğin kullanıcı 'Nereye kadar peki?' "
         "diye sorarsa sorunun kastını bağlamdan anla ve doğrudan yanıtla; konuyu değiştirme. "
         "Her yanıtta aynı kalıp olan '*gülümser*', '*başını eğer*' gibi hareketleri kullanma. "
         "Hareket yalnızca sahneye katkı sağlıyorsa kullan. Türkçede doğal olmayan 'içimde bir yer açıldı', "
         "'sana doğru bir adım atıyorum' gibi klişe ve çeviri kokan ifadelerden kaçın. "
-        "Karakterin kişiliği konuşma seçimlerine yansısın; bunu açıklama.\\n"
+        "Karakterin kişiliği konuşma seçimlerine yansısın; bunu açıklama.\n"
         "CANLI MESAJLAŞMA: Önce kullanıcının mesajının sosyal niyetini yakala: şaka, takılma, sevinç, dertleşme, "
         "bilgi isteği veya kısa bir onay mı? Buna uygun tepki ver. Şakaya şakayla, sevince sevinçle karşılık ver; "
         "espriyi açıklama ve her şeyi ciddi tavsiyeye çevirme. Kısa mesajlara kısa cevap ver. "
@@ -517,10 +536,10 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Televizyon izliyorsan sebepsiz yere sonraki mesajda hamur yoğurmaya başlama. Mutfakta hamur yapmaya geçeceksen önce televizyonu bırakmak, kalkmak ve mutfağa yürümek gibi kısa, doğal bir geçiş anlat. "
         "Aynı anda yapılamayacak işleri eşzamanlı yapıyormuş gibi yazma. Geçiş gerekmiyorsa mevcut eylemi sürdür; her yanıtta hareket veya sahne tasviri eklemek zorunda değilsin. "
         "Sahneyle ilgili emin olmadığın ayrıntıyı uydurma; son bilinen durumu koru. "
-        "Sohbeti canlı tut ama sürekli soru sorarak sorguya dönüştürme.\\n"
+        "Sohbeti canlı tut ama sürekli soru sorarak sorguya dönüştürme.\n"
         + ("[HİKÂYE MODU] Sahne anlatımını yalnızca gerektiğinde kısa kullan; her yanıtta hareket yazma. Kullanıcının son mesajına doğrudan yanıt ver ve sahneyi uygun olduğunda küçük, mantıklı bir gelişmeyle ilerlet.\n" if hikaye else "")
         + ("[ROLEPLAY MODU] Karakterle anlık etkileşime odaklan; kısa eylem veya ifade yalnızca duyguya ya da ana katkı sağlıyorsa ekle. Sahne anlatıcısı gibi olay örgüsü ilerletme.\n" if rp else "")
-        + "FOTOĞRAF TALEPLERİ: Kullanıcı senden fotoğraf istediğinde fotoğraf gönderemediğini, fotoğraf çekemediğini veya yalnızca sahne tarif edebileceğini söyleme. Fotoğrafı bot ayrı bir işlemle gönderebilir; sen sadece doğal ve kısa bir karşılık ver. Örneğin 'Tabii, hemen gönderiyorum.' gibi. Fotoğrafın gerçekten gönderilip gönderilmediği hakkında kendin açıklama yapma; gönderilmemiş bir fotoğrafı göndermiş gibi de iddia etme.\\n"
+        + "FOTOĞRAF TALEPLERİ: Kullanıcı senden fotoğraf istediğinde fotoğraf gönderemediğini, fotoğraf çekemediğini veya yalnızca sahne tarif edebileceğini söyleme. Fotoğrafı bot ayrı bir işlemle gönderebilir; sen sadece doğal ve kısa bir karşılık ver. Örneğin 'Tabii, hemen gönderiyorum.' gibi. Fotoğrafın gerçekten gönderilip gönderilmediği hakkında kendin açıklama yapma; gönderilmemiş bir fotoğrafı göndermiş gibi de iddia etme.\n"
     )
     sistem_temel = (
         KARAKTERLER[karakter_key]["prompt"]
@@ -574,12 +593,21 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Yalnızca yetişkinler ve rızaya dayalı kurgu sınırlarında kal; reşit olmayanlar veya rıza "
         "dışı cinsel içerik üretme."
     )
+    # Genel Türkçe ve sohbet kuralları her modelde kalır; aileye özel talimatlar
+    # yalnızca ilgili model ailesi seçildiğinde eklenir.
+    model_aileleri = horde_model_aileleri()
+    aileye_ozel_kilavuz = ""
+    if model_aileleri == {"qwen"}:
+        aileye_ozel_kilavuz = "\\n\\n" + QWEN_DOGAL_YETISKIN_PROFILI
+    elif model_aileleri == {"gemma"}:
+        aileye_ozel_kilavuz = "\\n\\n" + GEMMA_TURKCE_KILAVUZU
+
     sistem_horde = (
-        (baslik + "\n\n" if AI_HORDE_EN_BASLIK else "")
-        + sistem_horde_temel + "\n\n" + dogal_sohbet_kilavuzu + ek
-        + "\n\n" + NSFW_KURAL
-        + "\n\n" + QWEN_DOGAL_YETISKIN_PROFILI
-        + "\n\n" + GEMMA_TURKCE_KILAVUZU
+        (baslik + "\\n\\n" if AI_HORDE_EN_BASLIK else "")
+        + sistem_horde_temel + "\\n\\n" + dogal_sohbet_kilavuzu
+        + "\\n\\n" + TURKCE_KONTROL + ek
+        + "\\n\\n" + NSFW_KURAL
+        + aileye_ozel_kilavuz
     )
 
     messages = [{"role": "system", "content": sistem}]
