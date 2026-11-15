@@ -4,10 +4,8 @@ import random
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from pollinations import Pollinations
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-client = Pollinations(api_key=os.getenv("POLLINATIONS_API_KEY"))
 
 # Sadece senin kullanman için kilit. Render'da OWNER_ID ortam değişkenine
 # kendi Telegram ID'ni yaz (@userinfobot'tan öğrenebilirsin). Boş bırakırsan herkese açık olur.
@@ -38,11 +36,6 @@ CF_AKTIF = bool(CF_ACCOUNT_ID and CF_API_TOKEN)
 CF_IMAGE_MODEL = os.getenv(
     "CLOUDFLARE_IMAGE_MODEL", "@cf/black-forest-labs/flux-2-klein-4b"
 ).strip() or "@cf/black-forest-labs/flux-2-klein-4b"
-
-# Pollinations görsel ayarları. Anahtar chat için kullandığın POLLINATIONS_API_KEY ile aynı.
-# Model değiştirmek için Render'a POLLINATIONS_IMAGE_MODEL ekleyebilirsin (örn. flux, gptimage, seedream, nanobanana).
-POLL_KEY = os.getenv("POLLINATIONS_API_KEY", "").strip()
-POLL_MODEL = os.getenv("POLLINATIONS_IMAGE_MODEL", "flux").strip() or "flux"
 
 # Sohbet modeli ve sıcaklığı (Render'dan değiştirilebilir). Sıcaklık düşükse cümleler daha tutarlı olur.
 LLM_MODEL = os.getenv("LLM_MODEL", "openai").strip() or "openai"

@@ -121,18 +121,13 @@ TURKCE_DUZELT_PROMPT = (
 async def turkce_duzelt(metin: str) -> str:
     """Cevabı düzelttirir. Hata olursa ya da sonuç şüpheliyse orijinali döndürür."""
     try:
-        response = await asyncio.wait_for(
-            asyncio.to_thread(
-                client.chat.completions.create,
-                messages=[
-                    {"role": "system", "content": TURKCE_DUZELT_PROMPT},
-                    {"role": "user", "content": metin},
-                ],
-                model=LLM_MODEL,
-            ),
+        yeni = await asyncio.wait_for(
+            llm_uret([
+                {"role": "system", "content": TURKCE_DUZELT_PROMPT},
+                {"role": "user", "content": metin},
+            ]),
             timeout=TURKCE_DUZELT_ZAMAN_ASIMI,
         )
-        yeni = (response.choices[0].message.content or "").strip()
     except Exception as e:
         logging.warning(f"Türkçe düzeltme başarısız, orijinal kullanılıyor: {e}")
         return metin
@@ -187,6 +182,13 @@ def _env_int(ad: str, varsayilan: int) -> int:
 
 
 AI_HORDE_ACIK = os.getenv("AI_HORDE_ACIK", "1") != "0"
+# AI Horde remains the default. Routeway runs only when explicitly selected.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "aihorde").strip().lower() or "aihorde"
+ROUTEWAY_API_KEY = os.getenv("ROUTEWAY_API_KEY", "").strip()
+ROUTEWAY_BASE_URL = "https://api.routeway.ai/v1"
+ROUTEWAY_MODEL = os.getenv(
+    "ROUTEWAY_MODEL", "gemma-4-26b-a4b-it-meromero:free"
+).strip() or "gemma-4-26b-a4b-it-meromero:free"
 # Varsayılan AI Horde modeli: Türkçe sohbet testi başarılı bulunan Qwen.
 # Render ortamında AI_HORDE_MODELS tanımlıysa ortam değişkeni önceliklidir.
 AI_HORDE_MODELS = os.getenv(
@@ -209,12 +211,43 @@ HORDE_EN_BASLIK_METNI = (
     "çeviri kokan, yapay veya aşırı edebî ifadeler kullanma. Sadece karakterin cevabını ver. "
     "İç düşünce, analiz, plan, İngilizce açıklama veya konuşmacı etiketi yazma."
 )
-AI_HORDE_KALITE_KONTROL = os.getenv("AI_HORDE_KALITE_KONTROL", "1") != "0"  # bozuk çıktıyı Pollinations'a yönlendir
-POLLINATIONS_YEDEK_ACIK = os.getenv("POLLINATIONS_YEDEK_ACIK", "0") == "1"  # Varsayılan kapalı; Render'dan 1 yapınca açılır.
+AI_HORDE_KALITE_KONTROL = os.getenv("AI_HORDE_KALITE_KONTROL", "1") != "0"  # bozuk Horde çıktısını reddet
+# Pollinations is deliberately not used as a chat provider or fallback.
 # Cloudflare, Python'un varsayılan User-Agent'ını (Python-urllib) engelliyor (hata 1010). Kendi User-Agent'ımızı gönderiyoruz.
 AI_HORDE_USER_AGENT = os.getenv("AI_HORDE_USER_AGENT", "Mozilla/5.0 (compatible; LailaTelegramBot/1.0)").strip()
 _horde_hata_sayisi = 0
 _horde_devre_disi_bitis = 0.0
+
+
+def routeway_uret_sync(messages: list) -> str:
+    """Call the explicitly selected OpenAI-compatible Routeway provider."""
+    if not ROUTEWAY_API_KEY:
+        raise RuntimeError("LLM_PROVIDER=routeway seçildi ancak ROUTEWAY_API_KEY boş.")
+    payload = json.dumps({
+        "model": ROUTEWAY_MODEL,
+        "messages": messages,
+        **({"temperature": LLM_SICAKLIK} if LLM_SICAKLIK is not None else {}),
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        f"{ROUTEWAY_BASE_URL}/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {ROUTEWAY_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=90) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    return (data["choices"][0]["message"].get("content") or "").strip()
+
+
+async def llm_uret(messages: list) -> str:
+    """Use only the selected provider; never fall back to a paid service."""
+    if LLM_PROVIDER == "routeway":
+        return await asyncio.to_thread(routeway_uret_sync, messages)
+    raise RuntimeError(f"Bilinmeyen LLM_PROVIDER: {LLM_PROVIDER!r}; aihorde veya routeway kullanın.")
 
 
 def horde_metni_temizle(metin: str) -> str:
@@ -629,78 +662,76 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     horde_sonuc = None
 
     # 1) AI Horde. Üst üste iki kez başarısız olursa 15 dakika denenmez (her mesaja bekleme eklemesin).
-    if AI_HORDE_ACIK and time.time() >= _horde_devre_disi_bitis:
-        horde_mesajlari = (
-            [{"role": "system", "content": sistem_horde}]
-            + horde_butceye_sigdir(
-                sistem_horde,
-                horde_gecmisi_hazirla(messages[1:-1][-AI_HORDE_GECMIS:]),
-                messages[-1],
-            )
-            + [messages[-1]]
+    if LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
+        # Routeway is opt-in and isolated: errors are surfaced, never sent to Horde or Pollinations.
+        ham = await llm_uret(messages)
+        cevap = konusma_etiketlerini_temizle(
+            cevabi_ayristir(dusunce_bloklarini_sil(ham))[1]
         )
-        try:
-            token_limiti = (
-                _env_int("AI_HORDE_MAX_TOKENS_RP", 550)
-                if (rp or hikaye)
-                else _env_int("AI_HORDE_MAX_TOKENS", 450)
-            )
-            aday = ""
-            for deneme in range(2):
-                max_token = token_limiti if deneme == 0 else max(token_limiti + 1, min(token_limiti * 2, 1200))
-                ham = await asyncio.to_thread(
-                    ai_horde_uret_sync, horde_mesajlari, max_token,
-                    "",   # Cevabı zorunlu hareketle başlatma; doğal diyalog öncelikli.
-                )
-                # Önce düşünce bloklarını temizle; yalnızca kullanıcıya gidecek
-                # aday yanıt üzerinde kalite kontrolü yap.
-                ham = dusunce_bloklarini_sil(ham)
-                aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
-                sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
-                if not aday and deneme == 0:
-                    logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
-                    continue
-                if sebep:
-                    raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
-                break
-            temiz = aday
-            if not temiz:
-                raise RuntimeError("Horde boş cevap döndürdü")
-            horde_sonuc = ("", temiz)
-            _horde_hata_sayisi = 0
-            logging.info("LLM yanıtı AI Horde üzerinden alındı.")
-        except Exception as e:
-            horde_sonuc = None
-            _horde_hata_sayisi += 1
-            logging.warning(f"AI Horde kullanılamadı: {e}")
-            if _horde_hata_sayisi >= 2:
-                _horde_devre_disi_bitis = time.time() + 15 * 60
-                _horde_hata_sayisi = 0
-                logging.warning("AI Horde 15 dakika devre dışı bırakıldı.")
+        if not cevap:
+            raise RuntimeError("Routeway boş cevap döndürdü.")
+        horde_sonuc = ("", cevap)
 
-    # 2) Pollinations yedeği: güvenlik için varsayılan kapalı; yalnızca Render'dan açılır.
+    # AI Horde remains the default and is also used until a selected Routeway key is present.
+    else:
+        if LLM_PROVIDER == "routeway" and not ROUTEWAY_API_KEY:
+            logging.info("ROUTEWAY_API_KEY boş; AI Horde kullanılmaya devam ediliyor.")
+        if AI_HORDE_ACIK and time.time() >= _horde_devre_disi_bitis:
+            horde_mesajlari = (
+                [{"role": "system", "content": sistem_horde}]
+                + horde_butceye_sigdir(
+                    sistem_horde,
+                    horde_gecmisi_hazirla(messages[1:-1][-AI_HORDE_GECMIS:]),
+                    messages[-1],
+                )
+                + [messages[-1]]
+            )
+            try:
+                token_limiti = (
+                    _env_int("AI_HORDE_MAX_TOKENS_RP", 550)
+                    if (rp or hikaye)
+                    else _env_int("AI_HORDE_MAX_TOKENS", 450)
+                )
+                aday = ""
+                for deneme in range(2):
+                    max_token = token_limiti if deneme == 0 else max(token_limiti + 1, min(token_limiti * 2, 1200))
+                    ham = await asyncio.to_thread(
+                        ai_horde_uret_sync, horde_mesajlari, max_token,
+                        "",   # Cevabı zorunlu hareketle başlatma; doğal diyalog öncelikli.
+                    )
+                    # Önce düşünce bloklarını temizle; yalnızca kullanıcıya gidecek
+                    # aday yanıt üzerinde kalite kontrolü yap.
+                    ham = dusunce_bloklarini_sil(ham)
+                    aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
+                    sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
+                    if not aday and deneme == 0:
+                        logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
+                        continue
+                    if sebep:
+                        raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
+                    break
+                temiz = aday
+                if not temiz:
+                    raise RuntimeError("Horde boş cevap döndürdü")
+                horde_sonuc = ("", temiz)
+                _horde_hata_sayisi = 0
+                logging.info("LLM yanıtı AI Horde üzerinden alındı.")
+            except Exception as e:
+                horde_sonuc = None
+                _horde_hata_sayisi += 1
+                logging.warning(f"AI Horde kullanılamadı: {e}")
+                if _horde_hata_sayisi >= 2:
+                    _horde_devre_disi_bitis = time.time() + 15 * 60
+                    _horde_hata_sayisi = 0
+                    logging.warning("AI Horde 15 dakika devre dışı bırakıldı.")
+
+    # No automatic provider fallback. In particular, Pollinations is disabled for chat.
     if horde_sonuc is not None:
         dusunce, cevap = horde_sonuc
-    elif not POLLINATIONS_YEDEK_ACIK:
-        logging.error("AI Horde yanıt vermedi ve Pollinations yedeği kapalı. Render'da POLLINATIONS_YEDEK_ACIK=1 yapılırsa yedek açılır.")
-        raise RuntimeError("AI Horde yanıt vermedi; Pollinations yedeği kapalı.")
     else:
-        logging.warning("AI Horde kullanılamadı; POLLINATIONS_YEDEK_ACIK=1 olduğu için Pollinations yedeği deneniyor.")
-        parametreler = {"messages": messages, "model": LLM_MODEL}
-        if LLM_SICAKLIK is not None:
-            parametreler["temperature"] = LLM_SICAKLIK
-        try:
-            response = await asyncio.to_thread(client.chat.completions.create, **parametreler)
-        except Exception as e:
-            if "temperature" not in parametreler:
-                raise
-            logging.warning(f"Sıcaklık parametresiyle başarısız ({e}), onsuz deneniyor.")
-            parametreler.pop("temperature")
-            response = await asyncio.to_thread(client.chat.completions.create, **parametreler)
-        dusunce, cevap = cevabi_ayristir(dusunce_bloklarini_sil(response.choices[0].message.content))
-        cevap = konusma_etiketlerini_temizle(cevap) or cevap
+        raise RuntimeError("AI Horde yanıt vermedi; otomatik sağlayıcı yedeği kapalı.")
 
-    if TURKCE_DUZELT:
+    if TURKCE_DUZELT and LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
         cevap = await turkce_duzelt(cevap)
     cevap = emoji_dogal_uygula(cevap, karakter_key)
     return "", cevap  # iç ses kaldırıldı: model yazsa bile kullanıcıya gösterilmez
