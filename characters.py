@@ -185,7 +185,7 @@ FOTO_STIL = (
     "natural skin texture, soft natural light, shallow depth of field, unretouched, realistic"
 )
 FOTO_KISI = {
-    "leyla": "a 38-year-old Turkish woman with a smooth, youthful face, natural skin, warm brown eyes, wearing a pastel pink hijab, slightly full figure",
+    "leyla": "a 42-year-old Turkish woman with a mature, warm face, natural skin with fine age lines, brown eyes, wearing a modest pastel pink hijab, slightly full figure",
     "merve": "a 26-year-old Turkish woman with a bright playful smile, expressive eyes and long chestnut-brown hair",
     "asli": "a 30-year-old Turkish woman with a confident smile, defined facial features and straight dark hair",
     "dilek": "a 35-year-old Turkish woman with a warm smile, glasses and shoulder-length dark hair",
@@ -235,12 +235,15 @@ FOTO_SURPRIZ_ALTYAZILARI = {
 }
 
 
-def foto_promptu(karakter: dict, yakinlik: int = 0, surpriz: bool = False) -> str:
-    """Karakterin temel yüz özelliklerini koruyup ilişki seviyesine göre tarzı değiştirir."""
+def foto_promptu(karakter: dict, yakinlik: int = 0, surpriz: bool = False, scene_prompt: str = "") -> str:
+    """Build an identity-preserving photo prompt, honoring the supplied conversation scene."""
     key = karakter["key"]
-    sahne = random.choice(FOTO_SAHNELER[key])
+    sahne = scene_prompt.strip() if scene_prompt and scene_prompt.strip() else random.choice(FOTO_SAHNELER[key])
     seviye = max(0, min(3, int(yakinlik)))
-    stil = FOTO_YAKINLIK_STILLERI[seviye]
+    stil = (
+        "natural clothing and expression appropriate to the established conversation scene"
+        if scene_prompt.strip() else FOTO_YAKINLIK_STILLERI[seviye]
+    )
     kimlik_tutarliligi = (
         "same recognizable fictional adult woman in every image, preserve her established "
         "face shape, eyes, nose, age, skin tone and defining facial features; do not change identity"

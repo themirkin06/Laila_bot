@@ -210,6 +210,28 @@ def foto_istegi_mi(metin: str) -> bool:
     return bool(FOTO_KALIBI.search(metin.lower()))
 
 
+def foto_konusma_baglamini_olustur(hafiza: list, istek: str, sahne_notu: str = "") -> str:
+    """Use recent conversation details as the requested photo's scene and outfit context."""
+    son_turlar = []
+    for item in hafiza[-8:]:
+        metin = re.sub(r"\s+", " ", str(item.get("content", ""))).strip()
+        if metin:
+            rol = "Karakter" if item.get("role") == "assistant" else "Kullanıcı"
+            son_turlar.append(f"{rol}: {metin}")
+    if istek.strip():
+        son_turlar.append(f"Kullanıcının fotoğraf isteği: {istek.strip()}")
+    if sahne_notu.strip():
+        son_turlar.append(f"En son kayıtlı sahne: {sahne_notu.strip()}")
+    diyalog = "\n".join(son_turlar)[-1800:]
+    return (
+        "Create the photo to match the following recent Turkish conversation. "
+        "Use a location, activity, and clothing only when established or requested there; "
+        "keep continuity with the latest scene and do not invent a conflicting setting. "
+        "If no outfit was specified, use ordinary clothing suitable for the established activity. "
+        f"Conversation context: {diyalog or 'No scene details were established; use a simple natural portrait.'}"
+    )
+
+
 
 
 async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
@@ -304,14 +326,17 @@ async def foto_gonder(
             logging.warning(f"Havuz fotoğrafı gönderilemedi, üretilecek: {e}")
 
     reference_bytes = None
-    # Açıkça yüz referansı kaydedilmediyse mevcut havuzdaki ilk fotoğrafı kimlik referansı kullan.
-    reference_file_id = YUZ_REFERANSLARI.get(key) or (FOTO_HAVUZU.get(key) or [None])[0]
+    # Kimlik referansı yalnızca bu karakter için açıkça kaydedilmiş fotoğraf olabilir.
+    reference_file_id = YUZ_REFERANSLARI.get(key)
     if reference_file_id:
         try:
             telegram_file = await bot.get_file(reference_file_id)
             reference_bytes = bytes(await telegram_file.download_as_bytearray())
         except Exception as e:
             logging.warning(f"{KARAKTERLER[key]['isim']} yüz referansı indirilemedi: {e}")
+
+    if not reference_bytes:
+        raise RuntimeError(f"{KARAKTERLER[key]['isim']} için sabit yüz referansı kayıtlı değil veya indirilemedi.")
 
     foto_bytes = await foto_uret_bytes(
         karakter, random.randint(1, 999999), yakinlik=yakinlik,
@@ -338,8 +363,7 @@ GALERI_SAYFA_BOYUTU = 2
 
 async def _karakter_galeri_fotografi(key: str, karakter: dict, semaphore: asyncio.Semaphore, bot):
     """Use the character's own reference for new gallery img2img photos."""
-    havuz = FOTO_HAVUZU.get(key, [])
-    reference_file_id = YUZ_REFERANSLARI.get(key) or (havuz[0] if havuz else None)
+    reference_file_id = YUZ_REFERANSLARI.get(key)
     if not reference_file_id:
         raise RuntimeError(f"{karakter['isim']} için yüz referansı kayıtlı değil.")
     async with semaphore:
@@ -453,7 +477,7 @@ async def aday_gonder(bot, chat_id: int, key: str):
     """Aday fotoğraf üretir, altına Havuza ekle / At butonları koyar."""
     karakter = KARAKTERLER[key]
     await bot.send_chat_action(chat_id=chat_id, action="upload_photo")
-    ref_file_id = YUZ_REFERANSLARI.get(key) or (FOTO_HAVUZU.get(key) or [None])[0]
+    ref_file_id = YUZ_REFERANSLARI.get(key)
     ref_bytes = None
     if ref_file_id:
         try:
@@ -797,6 +821,10 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
                 caption=(random.choice(FOTO_ALTYAZILARI) if EMOJI_KULLAN else emoji_temizle(random.choice(FOTO_ALTYAZILARI))),
                 yakinlik=yakinlik_seviyesi(yakinlik_puani(durum, secilen_karakter)),
                 havuzdan=False,
+                scene_prompt=foto_konusma_baglamini_olustur(
+                    hafiza, user_message,
+                    durum.setdefault("sahne_hafizasi", {}).get(secilen_karakter, ""),
+                ),
             )
         except Exception as img_error:
             logging.error(f"Görsel isteği hatası: {img_error}")
@@ -916,7 +944,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
             await durum_kaydet(user_id)
 
     except Exception as e:
-        logging.error(f"Pollinations hatası: {e}")
+        logging.error(f"Mesaj işleme hatası: {e}")
         await update.message.reply_text("Şu an biraz dalgınım, tekrar dener misin? 😅")
         return
 

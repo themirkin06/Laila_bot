@@ -543,7 +543,7 @@ def horde_gecmisi_hazirla(gecmis: list) -> list:
 
 
 async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = "", puan: float = 0, stil: str = "hikaye", sahne=None, duygu_notu: str = "", dunya_notu: str = ""):
-    """Önce AI Horde'u dener (açıksa); olmazsa Pollinations'a düşer. (düşünce, cevap) döner."""
+    """Generate a reply with the selected provider and return (thought, answer)."""
     global _horde_hata_sayisi, _horde_devre_disi_bitis
     hikaye = (stil == "hikaye")
     rp = (stil == "roleplay")
