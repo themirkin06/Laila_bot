@@ -178,11 +178,10 @@ for _k, _metin in KARAKTER_PROMPTLARI.items():
 for _k, _v in KARAKTERLER.items():
     _v["key"] = _k
 
-# Fotoğraf prompt'u = kişi tarifi + rastgele bir sahne + ortak stil.
-# Eller görünmesin diye yakın çekim selfie tarzı seçildi (yapay zeka en çok elde hata yapar).
+# Kadraj kullanıcı isteğine göre seçilir; görsel üreticiye varsayılan yakın çekim dayatılmaz.
 FOTO_STIL = (
-    "close-up selfie-style smartphone photo, face and shoulders in frame, hands not visible, "
-    "natural skin texture, soft natural light, shallow depth of field, unretouched, realistic"
+    "realistic candid smartphone photograph, natural skin texture, soft natural light, "
+    "unretouched, realistic anatomy"
 )
 FOTO_KISI = {
     "leyla": "a 42-year-old Turkish woman with a mature, warm face, natural skin with fine age lines, brown eyes, wearing a modest pastel pink hijab, slightly full figure",
@@ -240,6 +239,12 @@ def foto_promptu(karakter: dict, yakinlik: int = 0, surpriz: bool = False, scene
     key = karakter["key"]
     sahne = scene_prompt.strip() if scene_prompt and scene_prompt.strip() else random.choice(FOTO_SAHNELER[key])
     seviye = max(0, min(3, int(yakinlik)))
+    if "Requested framing: full-length" in scene_prompt:
+        kadraj = "full-length head-to-toe framing, entire outfit and feet visible, enough space around the subject"
+    elif "Requested framing: close-up" in scene_prompt:
+        kadraj = "close-up portrait framing, face and shoulders clearly visible"
+    else:
+        kadraj = "natural medium portrait framing"
     stil = (
         "natural clothing and expression appropriate to the established conversation scene"
         if scene_prompt.strip() else FOTO_YAKINLIK_STILLERI[seviye]
@@ -253,8 +258,8 @@ def foto_promptu(karakter: dict, yakinlik: int = 0, surpriz: bool = False, scene
         if surpriz else "a natural candid personal photo"
     )
     return (
-        f"{FOTO_STIL}, {fotograf_notu}, {kimlik_tutarliligi}, "
-        f"portrait of {FOTO_KISI[key]}, {stil}, {sahne}, "
+        f"{FOTO_STIL}, {kadraj}, {fotograf_notu}, {kimlik_tutarliligi}, "
+        f"photograph of {FOTO_KISI[key]}, {stil}, {sahne}, "
         "realistic anatomy, natural hands if visible, realistic skin texture, "
         "tasteful non-explicit adult romantic styling"
     )

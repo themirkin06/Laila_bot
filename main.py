@@ -202,7 +202,8 @@ def yetkili_mi(update: Update) -> bool:
 
 
 FOTO_KALIBI = re.compile(
-    r"\b(fotoğraf|foto|selfie|resim)\w*\b.*\b(at|gönder|yolla|göster)\w*",
+    r"\b(fotoğraf|foto|selfie|resim)\w*\b.*\b(at|gönder|yolla|göster|çek|hazırla|iste|istiyorum|isterim|görmek|göreyim|paylaş)\w*"
+    r"|\b(boydan|tam boy|baştan ayağa|tepeden tırnağa)\b.*\b(fotoğraf|foto|resim|selfie)\w*",
     flags=re.I | re.S
 )
 
@@ -223,12 +224,18 @@ def foto_konusma_baglamini_olustur(hafiza: list, istek: str, sahne_notu: str = "
     if sahne_notu.strip():
         son_turlar.append(f"En son kayıtlı sahne: {sahne_notu.strip()}")
     diyalog = "\n".join(son_turlar)[-1800:]
+    if re.search(r"\b(boydan|tam boy|baştan ayağa|tepeden tırnağa|full[- ]length|full[- ]body)\b", istek, re.I):
+        kadraj = "Requested framing: full-length, head to toe, full outfit and feet visible."
+    elif re.search(r"\b(yakın çekim|portre|yüzün|yüzünü|omuzdan|selfie)\b", istek, re.I):
+        kadraj = "Requested framing: close-up portrait, face and shoulders clearly visible."
+    else:
+        kadraj = "No framing specified; use natural medium portrait framing."
     return (
-        "Create the photo to match the following recent Turkish conversation. "
-        "Use a location, activity, and clothing only when established or requested there; "
-        "keep continuity with the latest scene and do not invent a conflicting setting. "
-        "If no outfit was specified, use ordinary clothing suitable for the established activity. "
-        f"Conversation context: {diyalog or 'No scene details were established; use a simple natural portrait.'}"
+        "Create the photo according to the user's latest photo request. Treat its requested framing, "
+        "clothing, pose, activity, and setting as highest priority. Use recent conversation only to "
+        "fill details the request leaves unspecified, and keep continuity without contradicting the request. "
+        f"{kadraj} Conversation context: "
+        f"{diyalog or 'No prior scene details; follow the user's photo request directly.'}"
     )
 
 
