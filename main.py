@@ -11,7 +11,7 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
 
 logging.basicConfig(
@@ -405,19 +405,6 @@ KARAKTER_KISA_TANITIM = {
 }
 GALERI_SAYFA_BOYUTU = 2
 
-async def _karakter_galeri_fotografi(key: str, karakter: dict, semaphore: asyncio.Semaphore, bot):
-    """Use the character's own reference for new gallery img2img photos."""
-    reference_file_id = YUZ_REFERANSLARI.get(key) or (FOTO_HAVUZU.get(key) or [None])[0]
-    if not reference_file_id:
-        raise RuntimeError(f"{karakter['isim']} için yüz referansı kayıtlı değil.")
-    async with semaphore:
-        telegram_file = await bot.get_file(reference_file_id)
-        reference_bytes = bytes(await telegram_file.download_as_bytearray())
-        return await foto_uret_bytes(
-            karakter, int(karakter.get("seed", random.randint(1, 999999))),
-            reference_image=reference_bytes,
-        )
-
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sade karşılama ekranını gösterir; galeri kullanıcı isteyince açılır."""
     if not yetkili_mi(update):
@@ -448,38 +435,35 @@ async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sa
     toplam_sayfa = max(1, (len(keys) + GALERI_SAYFA_BOYUTU - 1) // GALERI_SAYFA_BOYUTU)
     sayfa = max(0, min(sayfa, toplam_sayfa - 1))
     secilenler = keys[sayfa * GALERI_SAYFA_BOYUTU:(sayfa + 1) * GALERI_SAYFA_BOYUTU]
-    semaphore = asyncio.Semaphore(2)
-    sonuclar = await asyncio.gather(
-        *[_karakter_galeri_fotografi(key, KARAKTERLER[key], semaphore, context.bot) for key in secilenler],
-        return_exceptions=True,
-    )
-    medya = []
     klavye = []
-    for key, foto in zip(secilenler, sonuclar):
+    yeni_mesaj_idleri = []
+    for key in secilenler:
         karakter = KARAKTERLER[key]
         isim = karakter["isim"]
         tanitim = KARAKTER_KISA_TANITIM.get(key, "Kendi hikâyesi olan bir karakter.")
-        if isinstance(foto, Exception) or not foto:
-            logging.warning("%s galeri fotoğrafı üretilemedi: %s", isim, foto)
-            klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
-            continue
-        medya.append(InputMediaPhoto(media=foto, caption=f"{isim}\n{tanitim}"))
-        klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
-
-    yeni_mesaj_idleri = []
-    if medya:
-        if len(medya) == 1:
-            item = medya[0]
-            gonderilen = await context.bot.send_photo(
-                chat_id=query.message.chat_id, photo=item.media,
-                caption=item.caption,
-            )
-            yeni_mesaj_idleri.append(gonderilen.message_id)
+        havuz = FOTO_HAVUZU.get(key) or []
+        if havuz:
+            try:
+                mesaj = await context.bot.send_photo(
+                    chat_id=query.message.chat_id,
+                    photo=havuz[0],
+                    caption=f"{isim}\n{tanitim}",
+                )
+                yeni_mesaj_idleri.append(mesaj.message_id)
+            except Exception as exc:
+                logging.warning("%s kayıtlı galeri fotoğrafı gönderilemedi: %s", isim, exc)
+                mesaj = await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=f"📷 {isim} için kayıtlı fotoğraf şu an gösterilemiyor. Yine de karakteri seçebilirsin.\n{tanitim}",
+                )
+                yeni_mesaj_idleri.append(mesaj.message_id)
         else:
-            gonderilenler = await context.bot.send_media_group(
-                chat_id=query.message.chat_id, media=medya
+            mesaj = await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=f"📷 {isim} için henüz kayıtlı fotoğraf yok. Yine de karakteri seçebilirsin.\n{tanitim}",
             )
-            yeni_mesaj_idleri.extend(m.message_id for m in gonderilenler)
+            yeni_mesaj_idleri.append(mesaj.message_id)
+        klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
 
     gezinme = []
     if sayfa > 0:
