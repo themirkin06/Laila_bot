@@ -11,7 +11,7 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
 
 logging.basicConfig(
@@ -437,33 +437,45 @@ async def karakter_galerisi_goster(query, context: ContextTypes.DEFAULT_TYPE, sa
     secilenler = keys[sayfa * GALERI_SAYFA_BOYUTU:(sayfa + 1) * GALERI_SAYFA_BOYUTU]
     klavye = []
     yeni_mesaj_idleri = []
+    medya = []
+    bos_havuzlar = []
     for key in secilenler:
         karakter = KARAKTERLER[key]
         isim = karakter["isim"]
         tanitim = KARAKTER_KISA_TANITIM.get(key, "Kendi hikâyesi olan bir karakter.")
         havuz = FOTO_HAVUZU.get(key) or []
         if havuz:
-            try:
-                mesaj = await context.bot.send_photo(
-                    chat_id=query.message.chat_id,
-                    photo=havuz[0],
-                    caption=f"{isim}\n{tanitim}",
-                )
-                yeni_mesaj_idleri.append(mesaj.message_id)
-            except Exception as exc:
-                logging.warning("%s kayıtlı galeri fotoğrafı gönderilemedi: %s", isim, exc)
-                mesaj = await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=f"📷 {isim} için kayıtlı fotoğraf şu an gösterilemiyor. Yine de karakteri seçebilirsin.\n{tanitim}",
-                )
-                yeni_mesaj_idleri.append(mesaj.message_id)
+            medya.append(InputMediaPhoto(media=havuz[0], caption=f"{isim}\n{tanitim}"))
         else:
-            mesaj = await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=f"📷 {isim} için henüz kayıtlı fotoğraf yok. Yine de karakteri seçebilirsin.\n{tanitim}",
-            )
-            yeni_mesaj_idleri.append(mesaj.message_id)
+            bos_havuzlar.append((isim, tanitim))
         klavye.append([InlineKeyboardButton(f"{isim} ile tanış", callback_data=f"sec_{key}")])
+
+    for isim, tanitim in bos_havuzlar:
+        mesaj = await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=f"📷 {isim} için henüz kayıtlı fotoğraf yok. Yine de karakteri seçebilirsin.\n{tanitim}",
+        )
+        yeni_mesaj_idleri.append(mesaj.message_id)
+
+    if len(medya) >= 2:
+        try:
+            gonderilenler = await context.bot.send_media_group(
+                chat_id=query.message.chat_id, media=medya
+            )
+            yeni_mesaj_idleri.extend(mesaj.message_id for mesaj in gonderilenler)
+        except Exception as exc:
+            logging.warning("Galeri fotoğraf albümü gönderilemedi: %s", exc)
+            for item in medya:
+                mesaj = await context.bot.send_photo(
+                    chat_id=query.message.chat_id, photo=item.media, caption=item.caption,
+                )
+                yeni_mesaj_idleri.append(mesaj.message_id)
+    elif medya:
+        item = medya[0]
+        mesaj = await context.bot.send_photo(
+            chat_id=query.message.chat_id, photo=item.media, caption=item.caption,
+        )
+        yeni_mesaj_idleri.append(mesaj.message_id)
 
     gezinme = []
     if sayfa > 0:
