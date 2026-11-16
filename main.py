@@ -32,6 +32,7 @@ from world import *
 from proactive import proaktif_dongu
 from story import *
 from ai import *
+from voice import send_voice, MAX_TEXT_LENGTH
 
 
 
@@ -351,9 +352,45 @@ async def foto_gonder(
     )
     await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
 
-async def cevabi_ilet(bot, chat_id: int, dusunce: str, cevap: str):
+async def cevabi_ilet(bot, chat_id: int, dusunce: str, cevap: str, character_key: str = None, automatic_voice: bool = False):
     """Karakter yanıtını normal Telegram mesajı olarak gönderir."""
     await mesajlari_gonder(bot, chat_id, dusunce, cevap)
+    if automatic_voice and character_key:
+        try:
+            spoken = " ".join(p.strip() for p in cevap.split("|||") if p.strip())[:MAX_TEXT_LENGTH]
+            await send_voice(bot, chat_id, character_key, spoken)
+        except Exception as error:
+            logging.warning("Otomatik sesli yanıt gönderilemedi; metin yanıtı korundu: %s", error)
+
+
+async def ses_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Speak supplied text on demand, or control automatic voice replies."""
+    if not yetkili_mi(update):
+        return
+    user_id = update.effective_user.id
+    durum = kullanici_durumu.get(user_id)
+    if not durum:
+        await update.effective_message.reply_text("Önce /start ile bir karakter seç.")
+        return
+    arg = " ".join(context.args or []).strip()
+    if arg.lower() in ("aç", "ac", "on"):
+        durum["ses_acik"] = True
+        await update.effective_message.reply_text("Otomatik sesli yanıtlar açıldı. /ses kapat ile kapatabilirsin.")
+        await durum_kaydet(user_id)
+        return
+    if arg.lower() in ("kapat", "off"):
+        durum["ses_acik"] = False
+        await update.effective_message.reply_text("Otomatik sesli yanıtlar kapatıldı.")
+        await durum_kaydet(user_id)
+        return
+    if not arg:
+        await update.effective_message.reply_text("Kullanım: /ses <metin> — metni seslendirir. Otomatik yanıtlar için /ses aç veya /ses kapat.")
+        return
+    try:
+        await send_voice(context.bot, update.effective_chat.id, durum["karakter"], arg[:MAX_TEXT_LENGTH])
+    except Exception as error:
+        logging.warning("İstenen sesli mesaj gönderilemedi: %s", error)
+        await update.effective_message.reply_text("Şu an sesli mesajı hazırlayamadım; yazıyla devam edebilirsin.")
 
 
 # --- Başlangıç Menüsü: sade karşılama + sayfalı karakter galerisi ---
@@ -882,7 +919,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
             dunya_notu=dunya_ozeti(durum, secilen_karakter),
             ekstra_sistem=ekstra_sistem,
         )
-        await cevabi_ilet(context.bot, chat_id, dusunce, cevap)
+        await cevabi_ilet(context.bot, chat_id, dusunce, cevap, secilen_karakter, durum.get("ses_acik", False))
 
         # Yalnızca karakterin kendi yanıtında açık bir anlık eylem varsa sahne fotoğrafı gönder.
         # Kullanıcı mesajı tek başına tetikleyici olmaz; böylece geçmiş/varsayımsal eylemlere fotoğraf gitmez.
@@ -1031,6 +1068,7 @@ def main():
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("karakter", start_command))
+    application.add_handler(CommandHandler("ses", ses_command))
     application.add_handler(CommandHandler("sifirla", sifirla_command))
     application.add_handler(CommandHandler("stil", stil_command))
     application.add_handler(CommandHandler("hikaye", hikaye_command))

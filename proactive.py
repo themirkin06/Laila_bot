@@ -85,7 +85,9 @@ async def proaktif_kontrol(app, b):
                 duygu_notu=b["duygu_ozeti"](d, karakter_key),
                 dunya_notu=b["dunya_ozeti"](d, karakter_key),
             )
-            await b["cevabi_ilet"](app.bot, chat_id, dusunce, cevap)
+            await b["cevabi_ilet"](
+                app.bot, chat_id, dusunce, cevap, karakter_key, d.get("ses_acik", False)
+            )
             if foto_atsin:
                 try:
                     bulunan = b["otomatik_foto_sahnesi_bul"](cevap)

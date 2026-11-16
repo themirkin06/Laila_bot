@@ -2,3 +2,4 @@ python-telegram-bot
 requests
 curl_cffi
 Pillow>=10.0.0
+edge-tts>=7.0.0,<8.0.0
