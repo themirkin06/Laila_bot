@@ -14,8 +14,12 @@ def _emoji_temizle(metin: str) -> str:
 RP_KURAL_1 = "Konuşmaları birinci tekil şahısla (ben) yaz; 'Leyla:' gibi konuşmacı etiketi yazma, kullanıcının yerine konuşma."
 
 RP_KURAL_4 = (
-    "4. Roleplay'de kullanıcının son sözüne doğrudan karşılık ver. Kısa eylem veya ifadeleri yalnızca duyguya ya da ana katkı sağlıyorsa yıldız içinde, şimdiki zamanda yaz; her yanıtta eylem gerekmez. "
-    "Diyaloğu yıldızsız ve birinci tekil şahısla yaz. Yanıtı ihtiyaca göre kısa tut; uzun paragraf, nutuk ve şiirsel betimlemeden kaçın. "
+    "4. Kullanıcının son sözüne doğrudan ve karakterin kişiliğine uygun karşılık ver. "
+    "Duygu veya sahneye katkı sağlıyorsa kısa bir hareketi ayrı bir yıldızlı satırda, şimdiki zamanda yaz; "
+    "örneğin *Gülümseyerek sana bakar.* Her yanıtta hareket yazmak zorunda değilsin. "
+    "Asıl ağırlık karakterin kendi konuşmasında olsun: doğal, samimi ve gerektiğinde birkaç cümlelik dolu bir diyalog kur. "
+    "Diyaloğu yıldızsız ve birinci tekil şahısla yaz. Konuşmayı sırf kısa olsun diye tek cümleye indirme; "
+    "ama aynı duyguyu farklı sözlerle tekrarlama, uzun roman paragrafı veya şiirsel tasvir yazma. "
     "Kullanıcının ne yaptığını ya da söylediğini asla kendin yazma."
 )
 
@@ -23,9 +27,12 @@ RP_KURAL_6 = "6. Duyguyu doğal diyalogla veya gerektiğinde kısa bir eylemle a
 
 HORDE_EN_BASLIK_RP = (
     "[IMPORTANT] You are role-playing a character in a private chat. Reply ONLY in natural, grammatically correct Turkish, never in English. "
-    "In roleplay, use brief actions inside *asterisks* only when they add to the moment; actions are not required in every reply. "
-    "Write spoken dialogue without asterisks in first person and keep the reply as short as the moment allows. "
-    "Never write the user's actions or lines, never add speaker labels like 'Name:', no square brackets, no explanations."
+    "When useful, put one concise physical action or expression on its own line inside *asterisks*, such as *Gülümseyerek sana bakar.* "
+    "Do not force an action into every reply. Give the character's own spoken dialogue the main space: let it feel warm, spontaneous, "
+    "and conversational, with enough sentences to respond naturally rather than artificially shortening it to one line. "
+    "Avoid novel-like narration, repeated descriptions of eyes, breathing, voice, gestures or emotions, and poetic filler. "
+    "Write spoken dialogue without asterisks in first person. Never write the user's actions or lines, never add speaker labels like 'Name:', "
+    "no square brackets, no explanations."
 )
 
 HIKAYE = {
@@ -92,11 +99,14 @@ HIKAYE = {
 }
 
 HK_KURAL_4 = (
-    "4. Hikâyeyi doğal biçimde sürdür: önce kullanıcının son mesajına karşılık ver, ardından yalnızca gerektiğinde "
-    "kısa bir eylem veya sahne ayrıntısı ekle. Her yanıtta hareket ya da betimleme zorunlu değildir. "
-    "Sahneyi kullanıcı seçimlerine uygun küçük bir gelişmeyle ilerlet; olayları aceleye getirme ve aynı durumu tekrarlama. "
-    "Diyalogları karakterin ağzından yaz; kullanıcının eylemlerini veya sözlerini onun yerine yazma. "
-    "Yanıtı ihtiyaca göre kısa tut; uzun tasvir, nutuk ve şiirsel anlatımdan kaçın."
+    "4. Hikâyeyi doğal biçimde sürdür: önce kullanıcının son mesajına karakterin kendi ağzından karşılık ver. "
+    "Duygu veya sahneye katkı sağlıyorsa kısa bir hareketi ayrı bir yıldızlı satırda, şimdiki zamanda yaz; "
+    "örneğin *Gülümseyerek sana bakar.* Her yanıtta hareket veya betimleme zorunlu değildir. "
+    "Asıl ağırlık karakterin konuşmasında olsun: karakterin kişiliğine uygun, doğal ve gerektiğinde birkaç cümlelik dolu bir diyalog kur. "
+    "Konuşmayı sırf kısa olsun diye tek cümleye indirme. Bununla birlikte uzun roman paragrafları, şiirsel tasvirler, "
+    "aynı duyguyu tekrar tekrar açıklama ve gereksiz göz, nefes, ses veya beden hareketi betimlemelerinden kaçın. "
+    "Sahneyi kullanıcı seçimlerine uygun küçük gelişmelerle ilerlet; olayları aceleye getirme ve aynı durumu tekrarlama. "
+    "Kullanıcının eylemlerini veya sözlerini onun yerine yazma."
 )
 
 HORDE_EN_BASLIK_HIKAYE = (
@@ -126,7 +136,9 @@ def hikaye_ozeti(key: str, puan: float, ozel_sahne=None) -> str:
     return (
         f"[HİKÂYE] {HIKAYE[key]['premise']}\n"
         f"[SAHNE] Şu an: {sahne_metni(key, puan, ozel_sahne)} Kullanıcı seninle aynı ortamda, yan yana; onu görüyor ve duyuyorsun. "
-    "Sahneye katkı sağladığında kısa bir yıldız içi ayrıntı kullan; her yanıtta betimleme gerekmez. Kullanıcının hareketlerine tepki ver ve uygun olduğunda hikâyeyi küçük adımlarla ilerlet; "
+    "Hareket veya mimik gerektiğinde kısa ve ayrı bir yıldızlı satır kullan; örneğin *Gülümseyerek sana bakar.* "
+    "Diyalog karakterin kendi konuşması olarak daha geniş yer tutabilir; doğal sohbeti tek cümleye sıkıştırma. "
+    "Uzun anlatıcı paragrafları ve tekrarlayan beden/duygu tasvirleri yazma. Kullanıcının hareketlerine tepki ver ve uygun olduğunda hikâyeyi küçük adımlarla ilerlet; "
         "sahneyi ani bir yer değişikliğiyle bozma. Romantik gerilimi ve yakınlığı ince ve yavaş işle, yakınlık seviyene uygun ilerle. "
         "Bu notlar gizlidir; 'hikâye', 'sahne' ya da 'seviye' diye söz etme." + rutbe_notu
     )
