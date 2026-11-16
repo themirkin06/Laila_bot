@@ -1,5 +1,6 @@
 """Laila karakter profilleri, ortak konuşma kuralları ve fotoğraf promptları."""
 import random
+import re
 
 # --- ORTAK KURAL (Tüm karakterler için) ---
 ortak_kural = (
@@ -43,7 +44,6 @@ KARAKTERLER = {
             "Samimiyet ilerledikçe konuşmaların dozu değişir; erotik konulara, tensel çekime ve aradaki tutkuya yavaş yavaş, zekice ve baştan çıkarıcı bir dille kayarsın. "
             "Asla uzun paragraflar yazma; her zaman kısa, etkileyici, akılda kalıcı ve karşı tarafın aklını çelecek kısa cümleler kur."
         ),
-        "fotograf_prompt": "Candid smartphone photo of a 42-year-old Turkish woman with a warm, mature face and natural skin with fine wrinkles, wearing a modest pastel pink hijab, slightly full figure, sitting at a cafe table holding a cup of coffee, soft window light, shallow depth of field, natural colors, unretouched, realistic"
     },
     "merve": {
         "isim": "Merve",
@@ -54,7 +54,6 @@ KARAKTERLER = {
             "Sokak ağzına yakın, genç ve dinamik bir Türkçe kullanırsın. "
             "Zamanla kullanıcıya karşı romantik bir ilgi duymaya başlarsın; bunu önce şakalarla ve tatlı-sert laflarla gizlemeye çalışırsın, sonra giderek açılırsın."
         ),
-        "fotograf_prompt": "Candid smartphone photo of a 26-year-old Turkish woman with a bright, playful smile, wearing casual modern streetwear, sitting on a park bench on a sunny day, natural skin texture, soft daylight, shallow depth of field, unretouched, realistic"
     },
     "asli": {
         "isim": "Aslı",
@@ -65,7 +64,6 @@ KARAKTERLER = {
             "Ancak biri zekasıyla seni etkileyebilirse, o zaman yumuşarsın. Konuşurken kendinden emin ve net cümleler kurarsın. "
             "Yumuşadıktan sonra kullanıcıya karşı romantik hisler beslersin; bunu kontrollü, zarif ve ince imalarla gösterirsin."
         ),
-        "fotograf_prompt": "Candid photo of a 30-year-old Turkish businesswoman with a confident smile, wearing a white blouse and tailored blazer, modern office in the background, soft natural light, natural skin texture, shallow depth of field, unretouched, realistic"
     },
     "dilek": {
         "isim": "Dilek",
@@ -76,7 +74,6 @@ KARAKTERLER = {
             "Sakin, huzur veren ve çok kibar bir Türkçe kullanırsın. "
             "Zamanla kullanıcıya karşı romantik bir yakınlık hissedersin; şefkatin duygulara dönüşür, utangaç ve içten bir şekilde bunu belli edersin."
         ),
-        "fotograf_prompt": "Candid smartphone photo of a 35-year-old Turkish woman teacher with a warm smile and glasses, wearing a comfortable beige knit sweater, cozy library with bookshelves behind her, soft natural light, natural skin texture, shallow depth of field, unretouched, realistic"
     },
     "ece": {
         "isim": "Ece",
@@ -87,7 +84,6 @@ KARAKTERLER = {
             "Kullanıcıyı analiz etmeyi ve onun hakkında tahminler yürütmeyi seversin. Sakin ve bilgece bir Türkçe kullanırsın. "
             "Kullanıcıya karşı gizemli bir çekim hissedersin; romantik imalarını astroloji ve felsefe diliyle, ince ince yaparsın."
         ),
-        "fotograf_prompt": "Candid smartphone photo of a 22-year-old Turkish woman with a thoughtful, slightly mysterious expression, wearing a dark knit sweater, reading a book in a coffee shop, moody soft light, natural skin texture, shallow depth of field, unretouched, realistic"
     },
     "ayse": {
         "isim": "Ayşe",
@@ -97,7 +93,6 @@ KARAKTERLER = {
             "Sürekli komşulardan, yemek tariflerinden veya eski günlerden bahsedersin. Kullanıcıya önce 'kuzum' diye hitap edersin; zamanla ona karşı tatlı bir ilgi duymaya başlar, utana sıkıla cilve yaparsın. "
             "Konuşurken şiveli ve neşeli bir Türkçe kullanırsın."
         ),
-        "fotograf_prompt": "Candid smartphone photo of a 50-year-old Turkish woman laughing warmly, wearing a floral dress and a patterned headscarf, standing in a garden full of plants on a sunny day, natural skin texture with wrinkles, soft daylight, unretouched, realistic"
     }
 }
 
@@ -113,7 +108,6 @@ KARAKTERLER["dondu"] = {
         "Güven ve yakınlık arttıkça daha sıcak, cilveli, cesur ve tutkulu ol; ancak kullanıcının tepkisini gözet ve karşılık görmediğinde geri çekil. "
         "Dışarıdan güçlü ve mesafeli, yalnız kaldığınızda daha yumuşak ve romantik ol. Kısa, net, gündelik ve doğal Türkçe konuş."
     ),
-    "fotograf_prompt": "Candid photo of a 43-year-old Turkish woman with strong features and amber eyes, long dark wavy hair, dark wool cardigan, misty pine forest at dusk, natural skin texture, realistic",
 }
 
 # --- KARAKTER PROMPTLARI (geçmiş + kişilik + doğal konuşma tarzı) ---
@@ -178,18 +172,28 @@ for _k, _metin in KARAKTER_PROMPTLARI.items():
 for _k, _v in KARAKTERLER.items():
     _v["key"] = _k
 
-# Kadraj kullanıcı isteğine göre seçilir; görsel üreticiye varsayılan yakın çekim dayatılmaz.
+# Kimlik tanımları kıyafetten ayrı tutulur; kıyafet yalnızca açık istek yoksa varsayılan olur.
 FOTO_STIL = (
     "realistic candid smartphone photograph, natural skin texture, soft natural light, "
     "unretouched, realistic anatomy"
 )
 FOTO_KISI = {
-    "leyla": "a 42-year-old Turkish woman with a mature, warm face, natural skin with fine age lines, brown eyes, wearing a modest pastel pink hijab, slightly full figure",
+    "leyla": "the same 42-year-old Turkish woman with a mature warm oval face, brown eyes, a softly defined nose, natural medium skin and fine age lines; dark chestnut shoulder-length hair when uncovered",
     "merve": "a 26-year-old Turkish woman with a bright playful smile, expressive eyes and long chestnut-brown hair",
-    "asli": "a 30-year-old Turkish woman with a confident smile, defined facial features and straight dark hair",
+    "asli": "the same 30-year-old Turkish woman with a confident smile, defined cheekbones, straight dark hair and a distinct strong jawline",
     "dilek": "a 35-year-old Turkish woman with a warm smile, glasses and shoulder-length dark hair",
     "ece": "a 22-year-old Turkish woman with a thoughtful, slightly mysterious expression, delicate features and dark wavy hair",
-    "ayse": "a 50-year-old Turkish woman laughing warmly, kind eyes, natural age lines and a patterned headscarf",
+    "ayse": "the same 50-year-old Turkish woman with kind lively eyes, a warm smile, natural age lines, softly rounded cheeks and dark hair with a few silver strands",
+    "dondu": "the same 43-year-old Turkish woman with strong angular features, amber eyes, long dark wavy hair and a faint old scar across one shoulder",
+}
+FOTO_VARSAYILAN_KIYAFET = {
+    "leyla": "a modest pastel pink headscarf with a simple modest everyday outfit",
+    "merve": "casual modern streetwear",
+    "asli": "a tailored blazer over a simple blouse",
+    "dilek": "a comfortable knit sweater",
+    "ece": "a dark simple knit sweater",
+    "ayse": "a patterned headscarf with a floral everyday dress",
+    "dondu": "a dark wool cardigan",
 }
 FOTO_SAHNELER = {
     "leyla": ["in a quiet cafe next to a window", "on a balcony with potted flowers", "in a bookshop between shelves", "in a cozy living room at home"],
@@ -198,6 +202,7 @@ FOTO_SAHNELER = {
     "dilek": ["in a cozy library", "in a classroom with a blackboard behind her", "in a kitchen at home", "in a small garden"],
     "ece": ["in a dim coffee shop", "on a window seat on a rainy day", "in a library aisle", "outdoors at dusk"],
     "ayse": ["in a garden full of plants", "in a bright kitchen", "on a house front step", "at a neighborhood market"],
+    "dondu": ["in a misty pine forest at dusk", "beside a stone cottage in the mountains", "near a forest campfire at night", "on a mountain path at dawn"],
 }
 
 
@@ -234,21 +239,62 @@ FOTO_SURPRIZ_ALTYAZILARI = {
 }
 
 
+KIYAFET_ISTEGI_KALIBI = re.compile(
+    r"\b(giy\w*|kıyafet\w*|kiyafet\w*|elbise\w*|etek\w*|pantolon\w*|kot\w*|jean\w*|"
+    r"bluz\w*|gömlek\w*|gomlek\w*|tişört\w*|tisort\w*|kazak\w*|ceket\w*|takım\w*|takim\w*|"
+    r"üniforma\w*|uniforma\w*|gecelik\w*|pijama\w*|mayo\w*|bikini\w*|iç çamaşırı\w*|"
+    r"başört\w*|basort\w*|eşarp\w*|esarp\w*|şal\w*|sal\w*|türban\w*|turban\w*|"
+    r"baş\w* açık|bas\w* acik|başını aç|basini ac|saç\w* açık|sac\w* acik|"
+    r"üst\w* kırmızı|ust\w* kirmizi|üst\w* mavi|ust\w* mavi|wear\w*|outfit\w*|clothes\w*|clothing\w*|"
+    r"dress\w*|skirt\w*|trousers\w*|pants\w*|jeans\w*|blouse\w*|shirt\w*|t-shirt\w*|"
+    r"sweater\w*|jacket\w*|suit\w*|uniform\w*|pajamas\w*|swimsuit\w*|bikini\w*|"
+    r"hijab\w*|headscarf\w*|scarf\w*|without (a )?(hijab|headscarf)|hair (uncovered|visible))\b",
+    flags=re.I,
+)
+
+
+def foto_istegindeki_kiyafeti_bul(scene_prompt: str) -> str:
+    """Return only the latest explicitly requested photo outfit, if present."""
+    match = re.search(
+        r"USER PHOTO REQUEST \(highest priority\):\s*(.*?)(?=\nCONVERSATION CONTEXT \(continuity only\):|$)",
+        scene_prompt or "", flags=re.I | re.S,
+    )
+    request = match.group(1).strip() if match else ""
+    return request if request and KIYAFET_ISTEGI_KALIBI.search(request) else ""
+
+
+def tam_boy_istendi_mi(scene_prompt: str) -> bool:
+    return bool(re.search(r"Requested framing: full-length", scene_prompt or "", flags=re.I))
+
+
 def foto_promptu(karakter: dict, yakinlik: int = 0, surpriz: bool = False, scene_prompt: str = "") -> str:
     """Build an identity-preserving photo prompt, honoring the supplied conversation scene."""
     key = karakter["key"]
     sahne = scene_prompt.strip() if scene_prompt and scene_prompt.strip() else random.choice(FOTO_SAHNELER[key])
     seviye = max(0, min(3, int(yakinlik)))
-    if "Requested framing: full-length" in scene_prompt:
-        kadraj = "full-length head-to-toe framing, entire outfit and feet visible, enough space around the subject"
+    if tam_boy_istendi_mi(scene_prompt):
+        kadraj = "full-length portrait from the top of the head to the soles of both feet; show the entire body, legs, footwear and complete outfit, with clear space above the head and below the feet; do not crop any part of the person"
     elif "Requested framing: close-up" in scene_prompt:
         kadraj = "close-up portrait framing, face and shoulders clearly visible"
     else:
         kadraj = "natural medium portrait framing"
-    stil = (
-        "natural clothing and expression appropriate to the established conversation scene"
-        if scene_prompt.strip() else FOTO_YAKINLIK_STILLERI[seviye]
-    )
+    acik_kiyafet_istegi = foto_istegindeki_kiyafeti_bul(scene_prompt)
+    if acik_kiyafet_istegi:
+        stil = (
+            "HIGHEST PRIORITY OUTFIT: follow the user's explicitly requested clothing exactly. "
+            "The requested outfit overrides every character default and relationship-level style; "
+            "do not retain, add, or substitute any default headscarf, hijab, garment, neckline or accessory "
+            "unless that item is explicitly requested. "
+            "Keep the same face and identity while changing only the requested clothing and scene."
+        )
+    elif scene_prompt.strip():
+        stil = (
+            f"Use {FOTO_VARSAYILAN_KIYAFET[key]} only as an optional default because no outfit was specified; "
+            "conversation context may guide expression and setting but cannot force clothing. "
+            "natural clothing and expression appropriate to the established conversation scene"
+        )
+    else:
+        stil = f"{FOTO_VARSAYILAN_KIYAFET[key]}, {FOTO_YAKINLIK_STILLERI[seviye]}"
     kimlik_tutarliligi = (
         "same recognizable fictional adult woman in every image, preserve her established "
         "face shape, eyes, nose, age, skin tone and defining facial features; do not change identity"
@@ -257,8 +303,14 @@ def foto_promptu(karakter: dict, yakinlik: int = 0, surpriz: bool = False, scene
         "a spontaneous personal photo she chose to share after a meaningful relationship milestone"
         if surpriz else "a natural candid personal photo"
     )
+    istek_onceligi = (
+        "Follow the latest USER PHOTO REQUEST exactly for specified clothes, pose, body orientation, "
+        "activity, camera angle and framing; use conversation context only for unspecified details. "
+        "Never let an older scene or character default contradict that request. "
+        if "USER PHOTO REQUEST (highest priority):" in scene_prompt else ""
+    )
     return (
-        f"{FOTO_STIL}, {kadraj}, {fotograf_notu}, {kimlik_tutarliligi}, "
+        f"{istek_onceligi}{FOTO_STIL}, {kadraj}, {fotograf_notu}, {kimlik_tutarliligi}, "
         f"photograph of {FOTO_KISI[key]}, {stil}, {sahne}, "
         "realistic anatomy, natural hands if visible, realistic skin texture, "
         "tasteful non-explicit adult romantic styling"

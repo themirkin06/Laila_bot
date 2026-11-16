@@ -37,7 +37,7 @@ class ConversationGuidanceTests(unittest.TestCase):
             self.assertIn(namespace["KARAKTER_PROMPTLARI"][key], profiles[key]["prompt"])
 
     def test_changed_python_modules_parse(self):
-        for filename in ("ai.py", "characters.py"):
+        for filename in ("ai.py", "characters.py", "photos.py", "main.py", "config.py", "voice.py"):
             ast.parse((ROOT / filename).read_text(encoding="utf-8"), filename=filename)
 
 

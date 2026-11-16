@@ -15,18 +15,21 @@ from config import (
     AI_HORDE_IMAGE_API_KEY, AI_HORDE_IMAGE_MAX_WAIT, AI_HORDE_IMAGE_MODEL,
     CF_ACCOUNT_ID, CF_API_TOKEN, CF_AKTIF, CF_IMAGE_MODEL,
 )
-from characters import foto_promptu
+from characters import foto_istegindeki_kiyafeti_bul, foto_promptu, tam_boy_istendi_mi
 
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 IMAGE_STEPS = 25
 IMAGE_CFG_SCALE = 6
-IMAGE_DENOISING_STRENGTH = 0.40
+# Conservative img2img strengths preserve face identity while allowing outfit edits.
+IMAGE_DENOISING_STRENGTH = 0.42
+IMAGE_CLOTHING_DENOISING_STRENGTH = 0.47
+IMAGE_FULL_BODY_DENOISING_STRENGTH = 0.50
 IMAGE_POLL_INTERVAL = 3
 IMAGE_MAX_EDGE = 1024
 
 
-def _source_to_webp(reference_image: bytes) -> tuple[bytes, int, int]:
-    """Normalize a Telegram reference to a bounded, aspect-preserving WebP image."""
+def _source_to_webp(reference_image: bytes, full_length: bool = False) -> tuple[bytes, int, int]:
+    """Normalize a reference; use a portrait canvas when head-to-toe framing is requested."""
     if not reference_image:
         raise ValueError("AI Horde img2img için karakterin yüz referansı gerekli.")
     try:
@@ -35,11 +38,24 @@ def _source_to_webp(reference_image: bytes) -> tuple[bytes, int, int]:
     except Exception as exc:
         raise ValueError("Karakterin yüz referansı okunamadı; geçerli bir fotoğraf yükle.") from exc
 
-    scale = min(1.0, IMAGE_MAX_EDGE / max(source.size))
-    scaled_width = max(1, round(source.width * scale))
-    scaled_height = max(1, round(source.height * scale))
-    width = max(512, min(IMAGE_MAX_EDGE, round(scaled_width / 64) * 64))
-    height = max(512, min(IMAGE_MAX_EDGE, round(scaled_height / 64) * 64))
+    if full_length:
+        # Keep the identity reference in the upper frame and leave room below for legs and feet.
+        width, height = 768, IMAGE_MAX_EDGE
+        reference_height = round((height * 0.625) / 64) * 64
+        contained = ImageOps.contain(
+            source, (width, reference_height), method=Image.Resampling.LANCZOS
+        )
+        canvas = Image.new("RGB", (width, height), (127, 127, 127))
+        canvas.paste(contained, ((width - contained.width) // 2, 64))
+        output = BytesIO()
+        canvas.save(output, format="WEBP", quality=92, method=4)
+        return output.getvalue(), width, height
+    else:
+        scale = min(1.0, IMAGE_MAX_EDGE / max(source.size))
+        scaled_width = max(1, round(source.width * scale))
+        scaled_height = max(1, round(source.height * scale))
+        width = max(512, min(IMAGE_MAX_EDGE, round(scaled_width / 64) * 64))
+        height = max(512, min(IMAGE_MAX_EDGE, round(scaled_height / 64) * 64))
     contained = ImageOps.contain(source, (width, height), method=Image.Resampling.LANCZOS)
     canvas = Image.new("RGB", (width, height), (127, 127, 127))
     canvas.paste(contained, ((width - contained.width) // 2, (height - contained.height) // 2))
@@ -81,20 +97,23 @@ def _download_image(url: str) -> bytes:
     return image
 
 
-def ai_horde_img2img_sync(prompt: str, seed: int, reference_image: bytes) -> bytes:
+def ai_horde_img2img_sync(
+    prompt: str, seed: int, reference_image: bytes,
+    denoising_strength: float = IMAGE_DENOISING_STRENGTH, full_length: bool = False,
+) -> bytes:
     """Submit img2img to the selected model, wait for completion, and fetch the image."""
     if AI_HORDE_IMAGE_API_KEY == "0000000000":
         raise RuntimeError(
             "Yüz referansları anonim AI Horde isteklerinde herkese açık veri kümesiyle paylaşılabilir. "
             "Önce kayıtlı bir AI Horde anahtarını AI_HORDE_IMAGE_API_KEY olarak ayarla."
         )
-    source_webp, width, height = _source_to_webp(reference_image)
+    source_webp, width, height = _source_to_webp(reference_image, full_length=full_length)
     payload = {
         "prompt": prompt,
         "params": {
             "steps": IMAGE_STEPS,
             "cfg_scale": IMAGE_CFG_SCALE,
-            "denoising_strength": IMAGE_DENOISING_STRENGTH,
+            "denoising_strength": denoising_strength,
             "width": width,
             "height": height,
             "seed": str(seed),
@@ -129,16 +148,21 @@ def ai_horde_img2img_sync(prompt: str, seed: int, reference_image: bytes) -> byt
     raise TimeoutError(f"AI Horde img2img {AI_HORDE_IMAGE_MAX_WAIT} saniyede tamamlanmadı.")
 
 
-def cloudflare_img2img_sync(prompt: str, seed: int, reference_image: bytes) -> bytes:
+def _denoising_strength(scene_prompt: str) -> float:
+    if tam_boy_istendi_mi(scene_prompt):
+        return IMAGE_FULL_BODY_DENOISING_STRENGTH
+    if foto_istegindeki_kiyafeti_bul(scene_prompt):
+        return IMAGE_CLOTHING_DENOISING_STRENGTH
+    return IMAGE_DENOISING_STRENGTH
+
+
+def cloudflare_img2img_sync(
+    prompt: str, seed: int, reference_image: bytes, full_length: bool = False,
+) -> bytes:
     """Generate or edit an image with Cloudflare Workers AI using a face reference."""
     if not CF_AKTIF:
         raise RuntimeError("Cloudflare fotoğraf üretimi için hesap kimliği ve API tokenı gerekli.")
-    with Image.open(BytesIO(reference_image)) as opened:
-        source = ImageOps.exif_transpose(opened).convert("RGB")
-    source.thumbnail((512, 512), Image.Resampling.LANCZOS)
-    output = BytesIO()
-    source.save(output, format="WEBP", quality=90, method=4)
-    reference = output.getvalue()
+    reference, width, height = _source_to_webp(reference_image, full_length=full_length)
 
     boundary = "----LailaWorkersAI" + secrets.token_hex(12)
     chunks = []
@@ -151,8 +175,8 @@ def cloudflare_img2img_sync(prompt: str, seed: int, reference_image: bytes) -> b
         ))
 
     field("prompt", prompt)
-    field("width", "1024")
-    field("height", "1024")
+    field("width", str(width))
+    field("height", str(height))
     field("seed", str(seed))
     chunks.extend((
         f"--{boundary}\r\n".encode(),
@@ -212,14 +236,27 @@ async def foto_uret_bytes(
     prompt = foto_promptu(
         karakter, yakinlik=yakinlik, surpriz=surpriz, scene_prompt=scene_prompt
     )
-    prompt = "Preserve the same adult woman's facial identity from the input image. " + prompt
+    full_length = tam_boy_istendi_mi(scene_prompt)
+    denoising_strength = _denoising_strength(scene_prompt)
+    prompt = (
+        "Preserve exactly the same adult woman's recognizable facial identity from the input image: "
+        "same age and apparent age, face shape, eye shape and color, nose, skin tone, and distinguishing features. "
+        "Do not beautify into a different person or make her look younger. "
+        + prompt
+    )
     if CF_AKTIF:
         try:
             image = await asyncio.to_thread(
-                cloudflare_img2img_sync, prompt, seed, reference_image
+                cloudflare_img2img_sync, prompt, seed, reference_image, full_length
             )
             logging.info("Fotoğraf Cloudflare Workers AI üzerinden üretildi.")
             return image
         except Exception as exc:
             logging.warning("Cloudflare fotoğraf üretimi başarısız; AI Horde deneniyor: %s", exc)
-    return await asyncio.to_thread(ai_horde_img2img_sync, prompt, seed, reference_image)
+    logging.info(
+        "AI Horde img2img framing=%s denoising_strength=%.2f",
+        "full-length" if full_length else "standard", denoising_strength,
+    )
+    return await asyncio.to_thread(
+        ai_horde_img2img_sync, prompt, seed, reference_image, denoising_strength, full_length
+    )

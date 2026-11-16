@@ -204,7 +204,8 @@ def yetkili_mi(update: Update) -> bool:
 
 FOTO_KALIBI = re.compile(
     r"\b(fotoğraf|foto|selfie|resim)\w*\b.*\b(at|gönder|yolla|göster|çek|hazırla|iste|istiyorum|isterim|görmek|göreyim|paylaş)\w*"
-    r"|\b(boydan|tam boy|baştan ayağa|tepeden tırnağa)\b.*\b(fotoğraf|foto|resim|selfie)\w*",
+    r"|\b(boydan|tam boy|baştan ayağa|tepeden tırnağa|ayaklarım? (da )?görünsün|ayaklar (da )?görünsün|full[- ]body|full[- ]length)\b.*\b(fotoğraf|foto|resim|selfie)\w*"
+    r"|\b(fotoğraf|foto|resim|selfie)\w*.*\b(boydan|tam boy|baştan ayağa|tepeden tırnağa|ayaklarım? (da )?görünsün|ayaklar (da )?görünsün|full[- ]body|full[- ]length)\b",
     flags=re.I | re.S
 )
 
@@ -213,30 +214,33 @@ def foto_istegi_mi(metin: str) -> bool:
 
 
 def foto_konusma_baglamini_olustur(hafiza: list, istek: str, sahne_notu: str = "") -> str:
-    """Use recent conversation details as the requested photo's scene and outfit context."""
+    """Keep the latest explicit photo request above lower-priority conversation context."""
     son_turlar = []
     for item in hafiza[-8:]:
         metin = re.sub(r"\s+", " ", str(item.get("content", ""))).strip()
         if metin:
             rol = "Karakter" if item.get("role") == "assistant" else "Kullanıcı"
             son_turlar.append(f"{rol}: {metin}")
-    if istek.strip():
-        son_turlar.append(f"Kullanıcının fotoğraf isteği: {istek.strip()}")
     if sahne_notu.strip():
         son_turlar.append(f"En son kayıtlı sahne: {sahne_notu.strip()}")
     diyalog = "\n".join(son_turlar)[-1800:]
-    if re.search(r"\b(boydan|tam boy|baştan ayağa|tepeden tırnağa|full[- ]length|full[- ]body)\b", istek, re.I):
-        kadraj = "Requested framing: full-length, head to toe, full outfit and feet visible."
+    if re.search(
+        r"\b(boydan|tam boy|baştan ayağa|tepeden tırnağa|ayaklarım? (da )?görünsün|"
+        r"ayaklar (da )?görünsün|full[- ]length|full[- ]body|feet visible)\b",
+        istek, re.I,
+    ):
+        kadraj = "Requested framing: full-length, head to toe, full outfit and both feet visible without cropping."
     elif re.search(r"\b(yakın çekim|portre|yüzün|yüzünü|omuzdan|selfie)\b", istek, re.I):
         kadraj = "Requested framing: close-up portrait, face and shoulders clearly visible."
     else:
         kadraj = "No framing specified; use natural medium portrait framing."
     return (
-        "Create the photo according to the user's latest photo request. Treat its requested framing, "
-        "clothing, pose, activity, and setting as highest priority. Use recent conversation only to "
-        "fill details the request leaves unspecified, and keep continuity without contradicting the request. "
-        f"{kadraj} Conversation context: "
-        f"{diyalog or 'No prior scene details; follow the photo request directly.'}"
+        "USER PHOTO REQUEST (highest priority): "
+        f"{istek.strip()}\n"
+        f"{kadraj}\n"
+        "CONVERSATION CONTEXT (continuity only): use this only to fill details the latest request leaves unspecified. "
+        "It must never override the requested clothing, pose, action, framing, or setting. "
+        f"{diyalog or 'No prior scene details.'}"
     )
 
 
@@ -1017,7 +1021,7 @@ async def post_init(app):
     else:
         logging.warning("UPSTASH_REDIS_REST_URL/TOKEN yok: hafıza sadece RAM'de, yeniden başlayınca silinir.")
 
-    logging.info(f"Fotoğraf: AI Horde img2img açık ({AI_HORDE_IMAGE_MODEL}; denoise 0.40, 25 steps, CFG 6).")
+    logging.info(f"Fotoğraf: AI Horde img2img açık ({AI_HORDE_IMAGE_MODEL}; isteğe uyarlanan denoise, 25 steps, CFG 6).")
     logging.info("AI Horde: " + ("açık (anahtar " + ("var" if AI_HORDE_KEY != "0000000000" else "yok, anonim") + ")." if AI_HORDE_ACIK else "kapalı."))
     logging.info("Emoji: " + ("açık." if EMOJI_KULLAN else "kapalı."))
     logging.info("NSFW durumu: " + ("AÇIK (tüm karakterler)." if NSFW_ACIK else "KAPALI."))
