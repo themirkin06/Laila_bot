@@ -326,8 +326,8 @@ async def foto_gonder(
             logging.warning(f"Havuz fotoğrafı gönderilemedi, üretilecek: {e}")
 
     reference_bytes = None
-    # Kimlik referansı yalnızca bu karakter için açıkça kaydedilmiş fotoğraf olabilir.
-    reference_file_id = YUZ_REFERANSLARI.get(key)
+    # Prefer the fixed face reference; otherwise reuse this character's own photo pool.
+    reference_file_id = YUZ_REFERANSLARI.get(key) or (FOTO_HAVUZU.get(key) or [None])[0]
     if reference_file_id:
         try:
             telegram_file = await bot.get_file(reference_file_id)
@@ -336,7 +336,7 @@ async def foto_gonder(
             logging.warning(f"{KARAKTERLER[key]['isim']} yüz referansı indirilemedi: {e}")
 
     if not reference_bytes:
-        raise RuntimeError(f"{KARAKTERLER[key]['isim']} için sabit yüz referansı kayıtlı değil veya indirilemedi.")
+        raise RuntimeError(f"{KARAKTERLER[key]['isim']} için yüz referansı veya karakter fotoğrafı bulunamadı.")
 
     foto_bytes = await foto_uret_bytes(
         karakter, random.randint(1, 999999), yakinlik=yakinlik,
@@ -363,7 +363,7 @@ GALERI_SAYFA_BOYUTU = 2
 
 async def _karakter_galeri_fotografi(key: str, karakter: dict, semaphore: asyncio.Semaphore, bot):
     """Use the character's own reference for new gallery img2img photos."""
-    reference_file_id = YUZ_REFERANSLARI.get(key)
+    reference_file_id = YUZ_REFERANSLARI.get(key) or (FOTO_HAVUZU.get(key) or [None])[0]
     if not reference_file_id:
         raise RuntimeError(f"{karakter['isim']} için yüz referansı kayıtlı değil.")
     async with semaphore:
@@ -477,7 +477,7 @@ async def aday_gonder(bot, chat_id: int, key: str):
     """Aday fotoğraf üretir, altına Havuza ekle / At butonları koyar."""
     karakter = KARAKTERLER[key]
     await bot.send_chat_action(chat_id=chat_id, action="upload_photo")
-    ref_file_id = YUZ_REFERANSLARI.get(key)
+    ref_file_id = YUZ_REFERANSLARI.get(key) or (FOTO_HAVUZU.get(key) or [None])[0]
     ref_bytes = None
     if ref_file_id:
         try:
