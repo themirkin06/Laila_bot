@@ -235,7 +235,7 @@ def foto_konusma_baglamini_olustur(hafiza: list, istek: str, sahne_notu: str = "
         "clothing, pose, activity, and setting as highest priority. Use recent conversation only to "
         "fill details the request leaves unspecified, and keep continuity without contradicting the request. "
         f"{kadraj} Conversation context: "
-        f"{diyalog or 'No prior scene details; follow the user's photo request directly.'}"
+        f"{diyalog or 'No prior scene details; follow the photo request directly.'}"
     )
 
 
