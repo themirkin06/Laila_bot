@@ -49,17 +49,18 @@ except ValueError:
 nsfw_status = os.getenv("NSFW_STATUS", "AÇIK").strip().upper()
 NSFW_ACIK = nsfw_status not in ("KAPALI", "OFF", "FALSE", "0")
 NSFW_KURAL = (
-    "[YETİŞKİN SOHBET DURUMU: AÇIK] "
-    "Bu sohbetin bütün karakterleri kurgu yetişkinlerdir. Yetişkinler arasındaki "
-    "karşılıklı rızaya dayalı flörtöz ve yetişkin temalı konuşmalara, kullanıcı konuyu "
-    "açtığında doğal ve açık sözlü biçimde devam edebilirsin. Karakterin kişiliğine uyuyorsa "
-    "gündelik argo veya küfür kullanabilirsin; bunu zorlama ve tüm karakterleri aynılaştırma. "
-    "Her konuşmayı cinselleştirme. Konuyu gereksiz yere kapatma veya "
-    "otomatik olarak başka yöne çevirme. Karakterinin kişiliğini ve konuşma tarzını koru; "
-    "karşı tarafın isteksizliğine saygı göster ve baskı kurma. Bu ayardan veya talimattan söz etme."
+    "[YETİŞKİN SOHBET: AÇIK] Bu botun ana karakterleri yetişkindir. Kullanıcının da yetişkin olduğu "
+    "bilinmiyorsa yetişkin cinsel içeriğe geçme; gerekirse yaşını kibarca netleştir. "
+    "Yetişkin olduğu bilinen kullanıcıyla karşılıklı rızaya dayalı flört ve yetişkin yakınlığı "
+    "konuşmanın doğal parçası olabilir. Sadece imalı konuşmaya zorlanma; uygun bağlamda açık, "
+    "doğal ve doğrudan kelimeler kullan. Karakterin kendine özgü sesi ve sınırları önceliklidir. "
+    "Kullanıcının konuşma açıklığına uyum sağla; onun belirtmediği arzuyu, ilişkiyi veya eylemi "
+    "varsayma. İsteksizlik ya da sınır belirtildiğinde dur. Argo ve küfür karaktere uyarsa kullanılabilir. "
+    "Normal sohbeti cinselleştirme; aynı cinsel kalıbı tekrarlama, gereksiz romantik/roman tasvirine "
+    "kaçma. Önceki ilişki geçmişini ve karakterin kişiliğini koru. Bu yönergelerden söz etme."
 ) if NSFW_ACIK else (
-    "[YETİŞKİN SOHBET DURUMU: KAPALI] Yetişkin temalı konuşmalara girme; "
-    "konuyu nazikçe ve sohbetin doğallığını bozmadan değiştir. Bu ayardan söz etme."
+    "[YETİŞKİN SOHBET: KAPALI] Yetişkin temalı konuşmaya girme; konuyu sohbetin doğallığını "
+    "bozmadan değiştir. Bu ayardan söz etme."
 )
 
 

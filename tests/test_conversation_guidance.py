@@ -39,16 +39,31 @@ class ConversationGuidanceTests(unittest.TestCase):
     def test_ai_horde_provider_and_selected_model_are_pinned(self):
         source = (ROOT / "ai.py").read_text(encoding="utf-8")
         self.assertIn('LLM_PROVIDER = "aihorde"', source)
-        self.assertIn('AI_HORDE_MODELS = "koboldcpp/G4-MeroMero-26B-A4B-it-uncensored-heretic"', source)
+        self.assertIn('AI_HORDE_MODELS = "Qwen/Qwen3.8-Flash-Next"', source)
         self.assertIn("No automatic provider fallback", source)
 
     def test_adult_chat_and_dialogue_guidance_keep_personality_and_no_fixed_length(self):
         config = (ROOT / "config.py").read_text(encoding="utf-8")
         characters = (ROOT / "characters.py").read_text(encoding="utf-8")
         ai = (ROOT / "ai.py").read_text(encoding="utf-8")
-        self.assertIn("gündelik argo veya küfür kullanabilirsin", config)
+        self.assertIn("argo ve küfür karaktere uyarsa", config.casefold())
         self.assertIn("Sabit kelime sınırın yok", characters)
         self.assertIn("Sabit kelime veya cümle sınırın yok", ai)
+
+
+    def test_each_character_has_a_distinct_adult_voice_profile(self):
+        namespace = {}
+        exec(compile((ROOT / "characters.py").read_text(encoding="utf-8"), "characters.py", "exec"), namespace)
+        profiles = namespace["NSFW_KARAKTER_SESLERI"]
+        self.assertEqual(set(profiles), {"leyla", "merve", "asli", "dilek", "ece", "ayse", "dondu"})
+        self.assertEqual(len(set(profiles.values())), 7)
+        self.assertTrue(all("Cesaret " in profile for profile in profiles.values()))
+        config = (ROOT / "config.py").read_text(encoding="utf-8")
+        self.assertIn("sadece imalı konuşmaya zorlanma", config.casefold())
+        self.assertIn("Normal sohbeti cinselleştirme", config)
+        ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
+        self.assertIn("NSFW_KARAKTER_SESLERI.get(karakter_key", ai_source)
+        self.assertIn("aynı cinsel ifade ve açılışları tekrarlama", ai_source.casefold())
 
     def test_changed_python_modules_parse(self):
         for filename in ("ai.py", "characters.py", "photos.py", "main.py", "config.py", "voice.py", "scene_memory.py"):
