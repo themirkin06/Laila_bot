@@ -453,26 +453,14 @@ def dusunce_bloklarini_sil(metin: str) -> str:
             kalan,
         )
         metin = kalan[cevap.end():] if cevap else metin[:etiketli.start()]
-    acik_dusunce = DUSUNCE_SIZINTISI.search(metin)
-    if acik_dusunce:
-        kalan = metin[acik_dusunce.end():]
-        cevap = re.search(
-            r"(?im)^\s*(?:\[\s*(?:cevap|answer|final)\s*\]\s*[:：-]?\s*|(?:cevap|answer|final)\s*[:：-]\s*)",
-            kalan,
-        )
-        metin = metin[:acik_dusunce.start()] + (kalan[cevap.end():] if cevap else "")
     return metin.strip()
 
 # Yalnızca belirgin iç-analiz ifadelerini yakala. Genel kelimeler (ör. "system", "prompt")
 # tek başına ret sebebi değildir; normal diyalogda yanlış pozitif üretmemelidir.
 DUSUNCE_SIZINTISI = re.compile(
-    r"(?im)^\s*(?:"
-    r"\[?(?:analysis|reasoning|internal thoughts?|thought process)\]?\s*:|"
-    r"(?:let me (?:think|assess|analy[sz]e)|i need to (?:answer|respond)|we need to (?:answer|respond)|"
-    r"the user (?:is asking|wrote|said|asked|profile says|wants)|my reasoning is|chain of thought|"
-    r"given this is an adult chat|i['’]ll keep it\b|i should (?:respond|answer)|response strategy)\b|"
-    r"(?:\d+\)\s*)?(?:niyet|bağlam|tepki|intent|context|reaction|response)\s*:"
-    r")"
+    r"(?im)^\s*(?:\[?(?:analysis|reasoning|internal thoughts?)\]?\s*:|"
+    r"(?:let me think|i need to (?:answer|respond)|we need to (?:answer|respond)|"
+    r"the user is asking|my reasoning is|chain of thought)\b)"
 )
 
 
@@ -673,9 +661,6 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     # Güvenlik/rıza sınırlarını kaldırmaz; gereksiz çekingenlik ve otomatik konu değiştirmeyi azaltır.
     QWEN_DOGAL_YETISKIN_PROFILI = (
         "[QWEN DOĞAL VE RAHAT SOHBET PROFİLİ] "
-        "Kullanıcı başka dilde açıkça istemedikçe kullanıcıya göndereceğin her yanıtı doğal Türkiye Türkçesiyle yaz. "
-        "İngilizce analiz, iç muhakeme, niyet/bağlam/tepki kontrol listesi, plan veya kullanıcı profili özeti yazma; "
-        "yalnızca karakterin doğrudan yanıtıyla başla. "
         "Yetişkin kurgu karakterisin; kullanıcıyla doğal bir mesajlaşma yürüt. "
         "Yetişkin olduğu açık olan kullanıcıyla yetişkin karakterler arasında karşılıklı rızaya dayalı "
         "romantik veya cinsel yakınlaşma konuşmanın konusuysa, gereksiz çekingenlik göstermeden ve "
