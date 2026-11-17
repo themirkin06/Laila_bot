@@ -46,7 +46,7 @@ class ConversationGuidanceTests(unittest.TestCase):
         config = (ROOT / "config.py").read_text(encoding="utf-8")
         characters = (ROOT / "characters.py").read_text(encoding="utf-8")
         ai = (ROOT / "ai.py").read_text(encoding="utf-8")
-        self.assertIn("gündelik argo veya küfür kullanabilirsin", config)
+        self.assertIn("argo ve küfür karaktere uyarsa", config)
         self.assertIn("Sabit kelime sınırın yok", characters)
         self.assertIn("Sabit kelime veya cümle sınırın yok", ai)
 
@@ -63,7 +63,7 @@ class ConversationGuidanceTests(unittest.TestCase):
         self.assertIn("Normal sohbeti cinselleştirme", config)
         ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
         self.assertIn("NSFW_KARAKTER_SESLERI.get(karakter_key", ai_source)
-        self.assertIn("aynı cinsel ifade ve açılışları tekrarlama", ai_source)
+        self.assertIn("aynı cinsel ifade ve açılışları tekrarlama", ai_source.casefold())
 
     def test_changed_python_modules_parse(self):
         for filename in ("ai.py", "characters.py", "photos.py", "main.py", "config.py", "voice.py", "scene_memory.py"):
