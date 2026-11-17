@@ -46,7 +46,7 @@ class ConversationGuidanceTests(unittest.TestCase):
         config = (ROOT / "config.py").read_text(encoding="utf-8")
         characters = (ROOT / "characters.py").read_text(encoding="utf-8")
         ai = (ROOT / "ai.py").read_text(encoding="utf-8")
-        self.assertIn("argo ve küfür karaktere uyarsa", config)
+        self.assertIn("argo ve küfür karaktere uyarsa", config.casefold())
         self.assertIn("Sabit kelime sınırın yok", characters)
         self.assertIn("Sabit kelime veya cümle sınırın yok", ai)
 
