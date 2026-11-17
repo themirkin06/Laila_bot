@@ -353,6 +353,10 @@ def foto_konusma_baglamini_olustur(hafiza: list, istek: str, sahne_notu: str = "
 
 async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
     """Cevabı ||| ile parçalara bölüp, aralarda 'yazıyor...' göstererek gönderir."""
+    cevap = (cevap or "").strip()
+    if not cevap:
+        logging.warning("Boş karakter yanıtı gönderim katmanına ulaştı; güvenli kısa yanıt kullanılıyor.")
+        cevap = "Bir an için ne diyeceğimi toparlayamadım. Bir daha söyler misin?"
     parcalar = [p.strip() for p in cevap.split("|||") if p.strip()][:3] or [cevap]
 
     for i, parca in enumerate(parcalar):

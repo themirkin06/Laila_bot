@@ -700,7 +700,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
                     # Önce düşünce bloklarını temizle; yalnızca kullanıcıya gidecek
                     # aday yanıt üzerinde kalite kontrolü yap.
                     ham = dusunce_bloklarini_sil(ham)
-                    aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
+                    aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key).strip()
                     sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
                     if not aday and deneme == 0:
                         logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
@@ -731,7 +731,10 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
 
     if TURKCE_DUZELT and LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
         cevap = await turkce_duzelt(cevap)
-    cevap = emoji_dogal_uygula(cevap, karakter_key)
+    cevap = emoji_dogal_uygula(cevap, karakter_key).strip()
+    if not cevap:
+        logging.warning("AI yanıtı son metin temizliğinden sonra boş kaldı; güvenli kısa yanıt kullanılıyor.")
+        cevap = "Bir an için ne diyeceğimi toparlayamadım. Bir daha söyler misin?"
     return "", cevap  # iç ses kaldırıldı: model yazsa bile kullanıcıya gösterilmez
 
 EMOJI_STILI["dondu"] = "Emojileri çok az kullan, sadece 🌙 🐺 🔥 gibi."
