@@ -47,6 +47,31 @@ class EmptyReplyGuardTests(unittest.TestCase):
         cleaner = namespace["dusunce_bloklarini_sil"]
         self.assertEqual(cleaner("[Düşünce süreci: modelin iç notu ve analiz"), "")
 
+    def test_unbracketed_thought_header_is_removed_and_labeled_answer_survives(self):
+        ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
+        tree = ast.parse(ai_source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "dusunce_bloklarini_sil"
+        )
+        namespace = {"re": __import__("re")}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(ROOT / "ai.py"), "exec"), namespace)
+        cleaner = namespace["dusunce_bloklarini_sil"]
+        result = cleaner("Düşünce süreci: İç not burada.\\n\\nCevap: Ben de seni özledim.")
+        self.assertEqual(result, "Ben de seni özledim.")
+
+    def test_unlabeled_thought_is_discarded_instead_of_leaked(self):
+        ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
+        tree = ast.parse(ai_source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "dusunce_bloklarini_sil"
+        )
+        namespace = {"re": __import__("re")}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(ROOT / "ai.py"), "exec"), namespace)
+        cleaner = namespace["dusunce_bloklarini_sil"]
+        self.assertEqual(cleaner("Analysis: The user asked me to continue the scene."), "")
+
     def test_ai_reply_has_nonempty_fallback_after_emoji_cleanup(self):
         tree = ast.parse((ROOT / "ai.py").read_text(encoding="utf-8"))
         function = next(
