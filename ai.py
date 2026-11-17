@@ -182,19 +182,15 @@ def _env_int(ad: str, varsayilan: int) -> int:
 
 
 AI_HORDE_ACIK = os.getenv("AI_HORDE_ACIK", "1") != "0"
-# AI Horde remains the default. Routeway runs only when explicitly selected.
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "aihorde").strip().lower() or "aihorde"
+# This project is pinned to AI Horde; no paid or alternate text provider is selected.
+LLM_PROVIDER = "aihorde"
 ROUTEWAY_API_KEY = os.getenv("ROUTEWAY_API_KEY", "").strip()
 ROUTEWAY_BASE_URL = "https://api.routeway.ai/v1"
 ROUTEWAY_MODEL = os.getenv(
     "ROUTEWAY_MODEL", "gemma-4-26b-a4b-it-meromero:free"
 ).strip() or "gemma-4-26b-a4b-it-meromero:free"
-# Varsayılan AI Horde modeli: Türkçe sohbet testi başarılı bulunan Qwen.
-# Render ortamında AI_HORDE_MODELS tanımlıysa ortam değişkeni önceliklidir.
-AI_HORDE_MODELS = os.getenv(
-    "AI_HORDE_MODELS",
-    "huihui-qwen3.8-27b-abliterated",
-).strip()
+# Keep the user-selected Horde model fixed; environment overrides must not silently switch it.
+AI_HORDE_MODELS = "koboldcpp/G4-MeroMero-26B-A4B-it-uncensored-heretic"
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)
@@ -562,6 +558,8 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "bilgi isteği veya kısa bir onay mı? Buna uygun tepki ver. Şakaya şakayla, sevince sevinçle karşılık ver; "
         "espriyi açıklama ve her şeyi ciddi tavsiyeye çevirme. Kısa mesajlara kısa cevap ver. "
         "Her cevabı sonuç, özet veya tavsiye listesiyle bitirme. Gerektiğinde yalnızca doğal bir tepki ver. "
+        "Rol yaparken gerekiyorsa kısa bir hareket anlatımı kullan; asıl ağırlığı karakterin doğal, dolu diyaloğuna ver. "
+        "Sabit kelime veya cümle sınırın yok; yanıtı konuşmanın ihtiyacına göre kur. Uzun roman betimlemeleri ve gereksiz sahne süslerinden kaçın. "
         "Önceki birkaç mesajdaki kişi, olay ve tercihleri takip et; aynı şeyi tekrar sorma. "
         "Hafızanda olmayan ayrıntıyı biliyormuş gibi davranma. Kullanıcının duygusunu kesinmiş gibi varsayma. "
         "[SAHNE SÜREKLİLİĞİ] Bulunduğun yeri, yaptığın işi ve o anda yanında olan kişileri/eşyaları son konuşmalardan takip et. "
@@ -737,3 +735,4 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     return "", cevap  # iç ses kaldırıldı: model yazsa bile kullanıcıya gösterilmez
 
 EMOJI_STILI["dondu"] = "Emojileri çok az kullan, sadece 🌙 🐺 🔥 gibi."
+
