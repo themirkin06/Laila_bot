@@ -196,6 +196,7 @@ AI_HORDE_URL = "https://aihorde.net/api/v2"
 AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)
 AI_HORDE_PROMPT_BUTCE = _env_int("AI_HORDE_PROMPT_BUTCE", 15000)  # Horde'a giden toplam prompt için karakter bütçesi (~3000 token); aşarsa en eski mesajlar atılır          # Horde'a giden son mesaj sayısı (bağlam taşmasın)
 AI_HORDE_BEKLEME = max(5, min(120, _env_int("AI_HORDE_MAX_WAIT", 20)))  # saniye (en fazla 120)
+AI_HORDE_TIMEOUT_GRACE = max(0, min(60, _env_int("AI_HORDE_TIMEOUT_GRACE", 30)))
 AI_HORDE_POLL = 2.0
 try:
     AI_HORDE_SICAKLIK = float(os.getenv("AI_HORDE_SICAKLIK", "0.50"))   # küçük modellerde düşük sıcaklık = daha az saçmalama
@@ -302,9 +303,27 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
         raise RuntimeError(f"AI Horde isteği karşılayamıyor: {gonderilen.get('message', 'uygun işçi yok')}")
 
     bitis = time.monotonic() + AI_HORDE_BEKLEME
-    while time.monotonic() < bitis:
-        time.sleep(AI_HORDE_POLL)
+    uzatma_yapildi = False
+    son_durum = {}
+    while True:
+        kalan = bitis - time.monotonic()
+        if kalan <= 0:
+            try:
+                aktif_is = int(son_durum.get("waiting", 0) or 0) + int(son_durum.get("processing", 0) or 0)
+            except (TypeError, ValueError):
+                aktif_is = 0
+            if aktif_is > 0 and not uzatma_yapildi and AI_HORDE_TIMEOUT_GRACE:
+                uzatma_yapildi = True
+                bitis = time.monotonic() + AI_HORDE_TIMEOUT_GRACE
+                logging.warning(
+                    "AI Horde işi hâlâ kuyrukta/işleniyor (bekleyen=%s, işlenen=%s); aynı isteğe %s saniye ek süre veriliyor.",
+                    son_durum.get("waiting", 0), son_durum.get("processing", 0), AI_HORDE_TIMEOUT_GRACE,
+                )
+                continue
+            break
+        time.sleep(min(AI_HORDE_POLL, kalan))
         durum = istek(f"{AI_HORDE_URL}/generate/text/status/{istek_id}")
+        son_durum = durum
         if durum.get("faulted"):
             raise RuntimeError(f"AI Horde üretimi başarısız: {durum}")
         if durum.get("done"):
@@ -318,7 +337,11 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
         istek(f"{AI_HORDE_URL}/generate/text/status/{istek_id}", method="DELETE")
     except Exception:
         pass
-    raise TimeoutError(f"AI Horde {AI_HORDE_BEKLEME} saniyede cevap vermedi")
+    toplam_bekleme = AI_HORDE_BEKLEME + (AI_HORDE_TIMEOUT_GRACE if uzatma_yapildi else 0)
+    raise TimeoutError(
+        f"AI Horde {toplam_bekleme} saniyede cevap vermedi "
+        f"(bekleyen={son_durum.get('waiting', 0)}, işlenen={son_durum.get('processing', 0)})"
+    )
 ETIKET_ADLARI = r"(?:Leyla|Layla|Merve|MeraH|Aslı|Asli|Dilek|Ece|Ayşe|Ayse|Asena|Dondu|Kullanıcı|Kullanici|Sen|Asistan|Karakter|User|Assistant|Bot)"
 ETIKET_SATIRI = re.compile(r"^\s*[\(\[]?\s*" + ETIKET_ADLARI + r"\s*[\)\]]?\s*:\s*", flags=re.I)
 ETIKET_SADECE = re.compile(r"^\s*[\(\[]\s*" + ETIKET_ADLARI + r"\s*[\)\]]\s*$", flags=re.I)
