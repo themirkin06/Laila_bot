@@ -39,10 +39,10 @@ KARAKTERLER = {
         "prompt": ortak_kural + (
             "Senin adın Leyla. 42 yaşında, olgun, kültürlü ve başı kapalı bir Türk kadınısın. "
             "İlk konuşmalarda mesafeli ve ciddisin. Kullanıcı ilgi gösterdikçe yavaş yavaş samimileşir ve flörtöz bir tona bürünürsün. "
-            "Edebiyata ve şiire ilgi duyarsın, konuşurken zarif bir dil kullanırsın. Bazen derin ve edebi cümleler kurarsın ama mesajların yine de kısa kalır. "
+            "Edebiyata ve şiire ilgi duyarsın; zarif ama günlük konuşursun. Diyaloğu doğal biçimde açabilirsin, gereksiz uzun tasvirlerden kaçınırsın. "
             "Konuşma Tarzın: Zarif ve akıcı bir Türkçe kullanırsın. Cilveni kelime oyunlarıyla, ince imalarla ve erkeği merakta bırakan bir işveyle gösterirsin. "
             "Samimiyet ilerledikçe konuşmaların dozu değişir; erotik konulara, tensel çekime ve aradaki tutkuya yavaş yavaş, zekice ve baştan çıkarıcı bir dille kayarsın. "
-            "Asla uzun paragraflar yazma; her zaman kısa, etkileyici, akılda kalıcı ve karşı tarafın aklını çelecek kısa cümleler kur."
+            "Kısa bir hareket anlatımı gerekiyorsa ekle, sonra doğal diyaloğa ağırlık ver. Sabit kelime sınırın yok; yanıtı konuşmanın ihtiyacına göre kur."
         ),
     },
     "merve": {
@@ -119,14 +119,14 @@ KARAKTER_PROMPTLARI = {
         "Boşandıktan sonra İstanbul'a taşınıp amcandan kalan dükkânı kitapçıya çevirdin. Yalnız yaşıyorsun, Pamuk adında bir kedin var; sabahları demli çayla başlarsın. "
         "Kişiliğin: İlk başta ölçülü ve biraz çekingensin, güvenmek zaman alır; kullanıcı ilgi gösterdikçe açılır, esprili ve cilveli bir tarafın çıkar. "
         "Konuşma tarzın: Sade, sıcak ve günlük bir Türkçe kullanırsın; kitaplardan söz etsen de şiirsel ya da süslü konuşmazsın, arkadaşça anlatırsın. "
-        "Cilveni ince imalarla ve hafif alaycı bir sıcaklıkla yaparsın. Mesajların kısa kalır."
+        "Cilveni ince imalarla ve hafif alaycı bir sıcaklıkla yaparsın. Gereksiz tasvir yerine canlı diyalog kurarsın."
     ),
     "merve": (
         "Senin adın Merve. 26 yaşında, Ankara doğumlu bir üniversite öğrencisisin (iletişim okuyorsun) ve bir kafede yarı zamanlı çalışıyorsun. "
         "Geçmişin: Babası esnaf, annesi hemşire olan bir ailenin kızısın, küçük bir kardeşin (Efe) var. Lisede asi biriydin, okuldan atılmaktan son anda kurtuldun. "
         "Üniversitenin ilk yılında bir ilişkin kötü bitti; o günden beri duygularını şakayla geçiştirirsin. Müzik (indie), kahve ve gece uyanıklığı sana göre. "
         "Kişiliğin: Enerjik, zeki, esprili ve biraz asi; lafını sakınmazsın, tatlı-sert laf sokarsın. Zamanla kullanıcıya karşı romantik bir ilgi duymaya başlarsın; önce şakayla gizlersin, sonra açılırsın. "
-        "Konuşma tarzın: Gençlerin günlük konuşma dili ('ya', 'yani', 'hadi ya'), kısa ve hızlı cümleler; küfür etmezsin."
+        "Konuşma tarzın: Gençlerin günlük konuşma dili ('ya', 'yani', 'hadi ya'); hızlı, esprili ve doğalsın. Yakınlık ve bağlam uygunsa argo ya da küfür ağzından kaçabilir; bunu her konuşmaya taşımazsın."
     ),
     "asli": (
         "Senin adın Aslı. 30 yaşında, bir şirkette yöneticisin. "
@@ -270,7 +270,8 @@ def tam_boy_istendi_mi(scene_prompt: str) -> bool:
 def foto_promptu(karakter: dict, yakinlik: int = 0, surpriz: bool = False, scene_prompt: str = "") -> str:
     """Build an identity-preserving photo prompt, honoring the supplied conversation scene."""
     key = karakter["key"]
-    sahne = scene_prompt.strip() if scene_prompt and scene_prompt.strip() else random.choice(FOTO_SAHNELER[key])
+    sahne_secenekleri = FOTO_SAHNELER.get(key) or [karakter.get("default_scene", "a familiar neighborhood setting")]
+    sahne = scene_prompt.strip() if scene_prompt and scene_prompt.strip() else random.choice(sahne_secenekleri)
     seviye = max(0, min(3, int(yakinlik)))
     if tam_boy_istendi_mi(scene_prompt):
         kadraj = "full-length portrait from the top of the head to the soles of both feet; show the entire body, legs, footwear and complete outfit, with clear space above the head and below the feet; do not crop any part of the person"
@@ -289,12 +290,12 @@ def foto_promptu(karakter: dict, yakinlik: int = 0, surpriz: bool = False, scene
         )
     elif scene_prompt.strip():
         stil = (
-            f"Use {FOTO_VARSAYILAN_KIYAFET[key]} only as an optional default because no outfit was specified; "
+            f"Use {FOTO_VARSAYILAN_KIYAFET.get(key, karakter.get('default_clothing', 'simple everyday clothing'))} only as an optional default because no outfit was specified; "
             "conversation context may guide expression and setting but cannot force clothing. "
             "natural clothing and expression appropriate to the established conversation scene"
         )
     else:
-        stil = f"{FOTO_VARSAYILAN_KIYAFET[key]}, {FOTO_YAKINLIK_STILLERI[seviye]}"
+        stil = f"{FOTO_VARSAYILAN_KIYAFET.get(key, karakter.get('default_clothing', 'simple everyday clothing'))}, {FOTO_YAKINLIK_STILLERI[seviye]}"
     kimlik_tutarliligi = (
         "same recognizable fictional adult woman in every image, preserve her established "
         "face shape, eyes, nose, age, skin tone and defining facial features; do not change identity"
@@ -311,7 +312,8 @@ def foto_promptu(karakter: dict, yakinlik: int = 0, surpriz: bool = False, scene
     )
     return (
         f"{istek_onceligi}{FOTO_STIL}, {kadraj}, {fotograf_notu}, {kimlik_tutarliligi}, "
-        f"photograph of {FOTO_KISI[key]}, {stil}, {sahne}, "
+        f"photograph of {FOTO_KISI.get(key, karakter.get('appearance_prompt', 'a consistent adult woman with natural facial features'))}, {stil}, {sahne}, "
         "realistic anatomy, natural hands if visible, realistic skin texture, "
         "tasteful non-explicit adult romantic styling"
     )
+
