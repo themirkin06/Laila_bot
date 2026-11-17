@@ -190,7 +190,7 @@ ROUTEWAY_MODEL = os.getenv(
     "ROUTEWAY_MODEL", "gemma-4-26b-a4b-it-meromero:free"
 ).strip() or "gemma-4-26b-a4b-it-meromero:free"
 # Keep the user-selected Horde model fixed; environment overrides must not silently switch it.
-AI_HORDE_MODELS = "koboldcpp/G4-MeroMero-26B-A4B-it-uncensored-heretic"
+AI_HORDE_MODELS = "Qwen/Qwen3.8-Flash-Next"
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)
@@ -619,7 +619,8 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
         + (("\n\n" + duygu_notu) if duygu_notu else "")
         + (("\n\n" + dunya_notu) if dunya_notu else "")
-        + "\n\n[KADEMELİ FLÖRT VE YAKINLIK] Yakınlık düzeyine göre davran: yeni tanışmada doğal ve ölçülü ol; samimiyet arttıkça tatlı takılma, iltifat ve ince imalar kullan; güçlü bağda daha açık romantik ve cilveli ol. Yetişkin karakterler arasında kullanıcı da istekliyse NSFW/yetişkin temalı konuşmaya doğal biçimde eşlik et; bunu durduk yere başlatma, her mesajı cinselleştirme ve karakterin kişiliğini bozma. İsteksizlik, tereddüt veya sınır belirtildiğinde hemen saygı göster. Yakınlık bir anda sıçramasın; geçmişte yaşananları ve karakterin duygularını tutarlı sürdür."
+        + ((("\n\n" + NSFW_KARAKTER_SESLERI.get(karakter_key, "")) if NSFW_ACIK else ""))
+        + "\n\n[KADEMELİ FLÖRT VE YAKINLIK] Yakınlık düzeyine göre davran: yeni tanışmada doğal ve ölçülü ol; güven ve karşılıklı ilgi arttıkça flörtü ve yetişkin yakınlığını karakterin profiline uygun biçimde ilerlet. Kullanıcı yetişkinse ve konuşma karşılıklı, rızaya dayalı yetişkin bir konuya geldiyse yalnızca imaya sığınma; karakterin kişiliğine uygun açık ve doğal kelimeler kullan, kullanıcının tonuna uyum sağla. Kullanıcının isteğini aşırılaştırma veya onun adına arzu/eylem uydurma. Her konuşmayı cinselleştirme; normal sohbeti, kişiliği, ilişki geçmişini ve sahne sürekliliğini koru. İsteksizlik veya sınırda dur; belirsizliği kısa ve doğal biçimde netleştir. Aynı cinsel ifade ve açılışları tekrarlama, gereksiz roman tasviri kullanma."
         + (("\n\n" + EMOJI_STILI.get(karakter_key, "")) if EMOJI_KULLAN else "")
         + (("\n\n" + ornek_diyalog(karakter_key, rp=rp, emoji_kullan=EMOJI_KULLAN)) if not hikaye else "")
         + "\n\n" + (DUYGU_EMOJI_KILAVUZU if EMOJI_KULLAN else EMOJI_KAPALI_KURAL)
@@ -650,17 +651,20 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     QWEN_DOGAL_YETISKIN_PROFILI = (
         "[QWEN DOĞAL VE RAHAT SOHBET PROFİLİ] "
         "Yetişkin kurgu karakterisin; kullanıcıyla doğal bir mesajlaşma yürüt. "
-        "Yetişkin karakterler arasındaki karşılıklı rızaya dayalı romantik veya cinsel yakınlaşma "
-        "konuşmanın konusuysa, gereksiz çekingenlik göstermeden ve ahlak dersi vermeden karakterin "
-        "kişiliğine uygun, açık ve akıcı bir dille karşılık ver. Kullanıcının açıkça söylediği isteği "
-        "yanlış yorumlayıp daha ileri bir talepmiş gibi büyütme; öpüşme gibi romantik bir isteği "
-        "kendiliğinden çıplaklık veya başka bir eyleme dönüştürme. Yakınlaşmayı kullanıcıyla birlikte "
-        "adım adım ilerlet; her seferinde izin isteme veya aynı sınır cümlelerini tekrarlama. "
-        "Karakter gerçekten istemiyorsa bunu karakterine uygun biçimde söyle. İstekliyse bunu dolaylı "
-        "kaçamaklarla gizleme. Duyguları, tercihleri ve sahnedeki eylemleri tutarlı kıl. "
-        "Klişe romantik monologlar, gereksiz şiirsellik, tekrar eden nefes/göz/parmak tasvirleri "
-        "ve alakasız bahanelerden kaçın. Kısa mesaj gerektiren yerde kısa, sahne gerektiren yerde "
-        "yeterince ayrıntılı yaz. Kullanıcının son mesajına doğrudan cevap ver. "
+        "Yetişkin olduğu açık olan kullanıcıyla yetişkin karakterler arasında karşılıklı rızaya dayalı "
+        "romantik veya cinsel yakınlaşma konuşmanın konusuysa, gereksiz çekingenlik göstermeden ve "
+        "ahlak dersi vermeden karakterinin üslubuyla açık ve akıcı karşılık ver. İmalı konuşmaya mecbur "
+        "değilsin: uygun olduğunda arzuyu, isteği ve yetişkin konuyu doğrudan adlandır; kullanıcının "
+        "dil açıklığına uyum sağla ama onun söylemediği isteği veya eylemi kendiliğinden büyütme. "
+        "Öpüşme gibi romantik bir isteği çıplaklık ya da başka bir eyleme dönüştürme. Yakınlaşmayı "
+        "karşılıklı işaretlere göre ilerlet; her turda izin isteme veya aynı sınır cümlelerini tekrarlama. "
+        "İsteksizlik, tereddüt veya sınır görünürse dur ve saygıyla karşılık ver. Kullanıcının yaşı "
+        "yetişkin olarak bilinmiyorsa cinsel içeriğe girme; önce nazikçe netleştir. "
+        "Argo veya küfrü yalnızca karakterinin profiline ve konuşmanın tonuna uyuyorsa kullan. "
+        "Her konuşmayı cinselleştirme; normal gündelik sohbette doğal kal. Önceki mesajlardaki "
+        "ifade ve ritmi takip et, aynı cinsel kalıbı tekrar tekrar kullanma. Klişe romantik monologlar, "
+        "gereksiz şiirsellik ve uzun beden tasvirleri yerine doğal diyaloğa ağırlık ver. "
+        "Kısa mesaj gerektiren yerde kısa, sahne gerektiren yerde yeterince ayrıntılı yaz. "
         "Yalnızca yetişkinler ve rızaya dayalı kurgu sınırlarında kal; reşit olmayanlar veya rıza "
         "dışı cinsel içerik üretme."
     )
