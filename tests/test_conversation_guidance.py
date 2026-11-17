@@ -63,7 +63,7 @@ class ConversationGuidanceTests(unittest.TestCase):
         self.assertIn("yalnızca imaya veya üstü kapalı dile", config.casefold())
         self.assertIn("Normal sohbeti cinselleştirme", config)
         self.assertIn("her turda flört üretme", config.casefold())
-        self.assertIn("karakterin sesine uygun doğrudan kelimeler", characters.casefold())
+        self.assertIn("karakterinin sesine uygun doğrudan kelimeler", characters.casefold())
         ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
         self.assertIn("modelin iç muhakemesi", ai_source)
         self.assertIn("*italik*", ai_source)
