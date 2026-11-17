@@ -190,7 +190,7 @@ ROUTEWAY_MODEL = os.getenv(
     "ROUTEWAY_MODEL", "gemma-4-26b-a4b-it-meromero:free"
 ).strip() or "gemma-4-26b-a4b-it-meromero:free"
 # Keep the user-selected Horde model fixed; environment overrides must not silently switch it.
-AI_HORDE_MODELS = "Nimbz/Gemma-4-Dark-Orthia-31B"
+AI_HORDE_MODELS = "koboldcpp/G4-MeroMero-26B-A4B-it-uncensored-heretic"
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)
@@ -362,7 +362,8 @@ def horde_model_aileleri() -> set:
     modeller = [x.strip().lower() for x in AI_HORDE_MODELS.split(",") if x.strip()]
     aileler = set()
     for isim in modeller:
-        if "gemma" in isim or "tutu" in isim:
+        # G4-MeroMero is based on Gemma 4 even though its Horde ID omits "gemma".
+        if any(k in isim for k in ("gemma", "tutu", "meromero", "g4-")):
             aileler.add("gemma")
         elif any(k in isim for k in ("qwen", "magnum")):
             aileler.add("qwen")
