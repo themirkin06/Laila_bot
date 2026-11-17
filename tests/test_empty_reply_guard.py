@@ -47,6 +47,44 @@ class EmptyReplyGuardTests(unittest.TestCase):
         cleaner = namespace["dusunce_bloklarini_sil"]
         self.assertEqual(cleaner("[Düşünce süreci: modelin iç notu ve analiz"), "")
 
+    def test_unbracketed_thought_header_is_removed_and_labeled_answer_survives(self):
+        ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
+        tree = ast.parse(ai_source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "dusunce_bloklarini_sil"
+        )
+        namespace = {"re": __import__("re")}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(ROOT / "ai.py"), "exec"), namespace)
+        cleaner = namespace["dusunce_bloklarini_sil"]
+        result = cleaner("Düşünce süreci: İç not burada.\n\nCevap: Ben de seni özledim.")
+        self.assertEqual(result, "Ben de seni özledim.")
+
+    def test_unlabeled_thought_is_discarded_instead_of_leaked(self):
+        ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
+        tree = ast.parse(ai_source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "dusunce_bloklarini_sil"
+        )
+        namespace = {"re": __import__("re")}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(ROOT / "ai.py"), "exec"), namespace)
+        cleaner = namespace["dusunce_bloklarini_sil"]
+        self.assertEqual(cleaner("Analysis: The user asked me to continue the scene."), "")
+
+    def test_thought_leak_is_retried_and_never_fails_the_user_turn(self):
+        source = (ROOT / "ai.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "llm_cevap"
+        )
+        function_source = ast.get_source_segment(source, function)
+        self.assertIn("aynı modelle bir kez daha deneniyor", function_source)
+        self.assertIn("deneme == 0", function_source)
+        self.assertIn("ikinci denemede de güvenli yanıt", function_source)
+        self.assertIn("Bir an için ne diyeceğimi toparlayamadım.", function_source)
+
     def test_ai_reply_has_nonempty_fallback_after_emoji_cleanup(self):
         tree = ast.parse((ROOT / "ai.py").read_text(encoding="utf-8"))
         function = next(
