@@ -268,7 +268,7 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
     payload = {
         "prompt": prompt,
         "params": {
-            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 450),
+            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 650),
             "max_context_length": _env_int("AI_HORDE_CONTEXT", 4096),
             "temperature": AI_HORDE_SICAKLIK,
             "top_p": 0.9,
@@ -498,7 +498,7 @@ def horde_bozuk_mu(metin: str):
         return "boş cevap"
     if DUSUNCE_SIZINTISI.search(metin):
         return "düşünce metni sızdı"
-    if re.search(r"<\|channel\|>|<\|(?:thought|analysis)\|>", metin, flags=re.I):
+    if re.search(r"<\|channel\|?>|<\|(?:thought|analysis)\|>", metin, flags=re.I):
         return "model kanal etiketi sızdı"
     # Açık kalmış düşünce etiketleri kullanıcıya gösterilmesin.
     if re.search(r"(?i)<\s*(?:think|thinking|thought|reasoning)\s*>", metin):
@@ -506,7 +506,37 @@ def horde_bozuk_mu(metin: str):
     return None
 
 
+def model_kanal_etiketlerini_temizle(metin: str) -> str:
+    """Gemma/Qwen ve benzeri modellerin thought/analysis/final kanal başlıklarını temizler."""
+    metin = (metin or "").strip()
+    if not metin:
+        return ""
+
+    # Hem doğru yazılmış <|channel|>thought hem de bozuk <|channel>thought biçimini yakala.
+    kanal = r"<\|channel\|?>\s*(thought|analysis|reasoning|final|answer)\b"
+    gizli = re.search(r"<\|channel\|?>\s*(?:thought|analysis|reasoning)\b", metin, flags=re.I)
+    if gizli:
+        sonraki = re.search(kanal, metin[gizli.end():], flags=re.I)
+        if sonraki and sonraki.group(1).lower() in ("final", "answer"):
+            bas = gizli.end() + sonraki.end()
+            metin = metin[:gizli.start()] + metin[bas:]
+        else:
+            # Gizli düşünce bloğundan sonra açık bir final kanalı yoksa hiçbirini gösterme.
+            metin = metin[:gizli.start()]
+
+    # Alternatif model biçimleri: <|thought|>...<|/thought|>, <think>...</think>.
+    metin = re.sub(r"<\|(?:thought|analysis|reasoning)\|>.*?(?:<\|/(?:thought|analysis|reasoning)\|>|$)", "", metin, flags=re.I | re.S)
+    metin = re.sub(r"<\s*(?:think|thinking|thought|reasoning)\s*>.*?<\s*/\s*(?:think|thinking|thought|reasoning)\s*>", "", metin, flags=re.I | re.S)
+
+    # Kullanıcıya gösterilmesi gereken kanal işaretlerini ve başlıklarını kaldır.
+    metin = re.sub(r"<\|channel\|?>\s*(?:final|answer)?", "", metin, flags=re.I)
+    metin = re.sub(r"^\s*(?:final|answer|assistant)\s*[:：-]?\s*", "", metin, flags=re.I)
+    metin = re.sub(r"(?im)^\s*(?:\[\s*(?:final|answer|cevap)\s*\]|(?:final|answer|cevap))\s*[:：-]\s*", "", metin)
+    return metin.strip()
+
+
 def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
+    metin = model_kanal_etiketlerini_temizle(metin)
     metin = re.sub(r"<\|?(?:im_start|im_end|start_of_turn|end_of_turn)\|?>(?:\s*(?:model|user|assistant|system))?", "", metin)
     metin = re.sub(r"<\|start_header_id\|>\s*(?:assistant|user|system)?\s*(?:<\|end_header_id\|>)?", "", metin)
     metin = re.sub(r"<\|(?:eot_id|end_header_id|begin_of_text|end_of_text)\|>", "", metin)
@@ -563,7 +593,7 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
         if not metin.lstrip().startswith("*"):
             logging.warning(f"Hareket yıldızsız başlıyor: {metin[:80]}")
 
-    return metin
+    return model_kanal_etiketlerini_temizle(metin)
 def horde_butceye_sigdir(sistem: str, gecmis: list, son_mesaj: dict) -> list:
     """Sistem talimatını ve son kullanıcı mesajını koruyup sığan en yeni konuşma turlarını tutar."""
     # Karakter bütçesi, 4096 tokenlık Horde penceresine güvenli pay bırakacak şekilde ayarlanır.
@@ -619,7 +649,10 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "espriyi açıklama ve her şeyi ciddi tavsiyeye çevirme. Kısa mesajlara kısa cevap ver. "
         "Her cevabı sonuç, özet veya tavsiye listesiyle bitirme. Gerektiğinde yalnızca doğal bir tepki ver. "
         "Rol yaparken gerekiyorsa kısa bir hareket anlatımı kullan; asıl ağırlığı karakterin doğal, dolu diyaloğuna ver. "
-        "Sabit kelime veya cümle sınırın yok; yanıtı konuşmanın ihtiyacına göre kur. Uzun roman betimlemeleri ve gereksiz sahne süslerinden kaçın. "
+        "Sabit kelime veya cümle sınırın yok; yanıtı konuşmanın ihtiyacına göre kur. Basit selamlaşma ve kısa onaylarda kısa kal; "
+        "kullanıcı bir olay anlatıyor, fikir soruyor, duygusunu paylaşıyor veya sohbeti açıyorsa tek cümleyle geçiştirme: "
+        "genellikle 2-5 doğal cümleyle karşılık ver, gerektiğinde biraz daha aç. Hikâye/roleplay sahnesinde karakterin "
+        "diyaloğunu ve tepkisini yeterince geliştir; sırf kısa olsun diye konuşmayı kesme. Uzun roman betimlemeleri ve gereksiz sahne süslerinden kaçın. "
         "Önceki birkaç mesajdaki kişi, olay ve tercihleri takip et; aynı şeyi tekrar sorma. "
         "Hafızanda olmayan ayrıntıyı biliyormuş gibi davranma. Kullanıcının duygusunu kesinmiş gibi varsayma. "
         "[SAHNE SÜREKLİLİĞİ] Bulunduğun yeri, yaptığın işi ve o anda yanında olan kişileri/eşyaları son konuşmalardan takip et. "
@@ -753,9 +786,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             )
             try:
                 token_limiti = (
-                    _env_int("AI_HORDE_MAX_TOKENS_RP", 550)
+                    _env_int("AI_HORDE_MAX_TOKENS_RP", 850)
                     if (rp or hikaye)
-                    else _env_int("AI_HORDE_MAX_TOKENS", 450)
+                    else _env_int("AI_HORDE_MAX_TOKENS", 650)
                 )
                 aday = ""
                 for deneme in range(2):
@@ -803,7 +836,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
 
     if TURKCE_DUZELT and LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
         cevap = await turkce_duzelt(cevap)
+    cevap = model_kanal_etiketlerini_temizle(cevap)
     cevap = emoji_dogal_uygula(cevap, karakter_key).strip()
+    cevap = model_kanal_etiketlerini_temizle(cevap)
     if not cevap:
         logging.warning("AI yanıtı son metin temizliğinden sonra boş kaldı; güvenli kısa yanıt kullanılıyor.")
         cevap = "Bir an için ne diyeceğimi toparlayamadım. Bir daha söyler misin?"
