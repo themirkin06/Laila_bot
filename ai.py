@@ -459,8 +459,10 @@ def dusunce_bloklarini_sil(metin: str) -> str:
 # tek başına ret sebebi değildir; normal diyalogda yanlış pozitif üretmemelidir.
 DUSUNCE_SIZINTISI = re.compile(
     r"(?im)^\s*(?:\[?(?:analysis|reasoning|internal thoughts?)\]?\s*:|"
-    r"(?:let me think|i need to (?:answer|respond)|we need to (?:answer|respond)|"
-    r"the user is asking|my reasoning is|chain of thought)\b)"
+    r"(?:let me think|let me respond|i need to (?:answer|respond)|i should respond|"
+    r"we need to (?:answer|respond)|the user (?:just )?(?:is asking|asked|says|said|wrote|typed|wants)|"
+    r"the user profile says|based on the system prompt|this seems like|since there['’]s no|"
+    r"my reasoning is|chain of thought)\b)"
 )
 
 
@@ -689,7 +691,10 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         aileye_ozel_kilavuz = "\\n\\n" + GEMMA_TURKCE_KILAVUZU
 
     sistem_horde = (
-        (baslik + "\\n\\n" if AI_HORDE_EN_BASLIK else "")
+        "ÖNCELİKLİ YANIT TALİMATI: Kullanıcı açıkça başka bir dil istemedikçe yalnızca doğal Türkçe yaz. "
+        "İngilizce analiz, iç düşünce, niyet/bağlam değerlendirmesi, profil özeti veya taslak üretme; "
+        "doğrudan karakterin kullanıcıya söyleyeceği Türkçe mesajla başla.\\n\\n"
+        + (baslik + "\\n\\n" if AI_HORDE_EN_BASLIK else "")
         + sistem_horde_temel + "\\n\\n" + dogal_sohbet_kilavuzu
         + "\\n\\n" + TURKCE_KONTROL + ek
         + "\\n\\n" + NSFW_KURAL
