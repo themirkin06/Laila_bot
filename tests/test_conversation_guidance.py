@@ -39,7 +39,7 @@ class ConversationGuidanceTests(unittest.TestCase):
     def test_ai_horde_provider_and_selected_model_are_pinned(self):
         source = (ROOT / "ai.py").read_text(encoding="utf-8")
         self.assertIn('LLM_PROVIDER = "aihorde"', source)
-        self.assertIn('AI_HORDE_MODELS = "Nimbz/Gemma-4-Dark-Orthia-31B"', source)
+        self.assertIn('AI_HORDE_MODELS = "koboldcpp/G4-MeroMero-26B-A4B-it-uncensored-heretic"', source)
         self.assertIn("No automatic provider fallback", source)
 
     def test_adult_chat_and_dialogue_guidance_keep_personality_and_no_fixed_length(self):
