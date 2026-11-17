@@ -752,7 +752,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
                         if deneme == 0:
                             logging.warning("AI Horde iç düşünce/bozuk çıktı üretti; aynı modelle bir kez daha deneniyor (%s).", sebep)
                             continue
-                        raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
+                        logging.warning("AI Horde ikinci denemede de güvenli yanıt üretemedi (%s); iç notu göstermemek için kısa yanıt kullanılıyor.", sebep)
+                        aday = "Bir an için ne diyeceğimi toparlayamadım. Bir daha söyler misin?"
+                        break
                     break
                 temiz = aday
                 if not temiz:
