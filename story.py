@@ -245,3 +245,4 @@ ORNEK_DIYALOG_RP = {
         ("Bana ne öğreteceksin?", "*Gözleri hafifçe parlar.* Önce sabrı. Alfa olmak güçten çok sabırdır."),
     ],
 }
+

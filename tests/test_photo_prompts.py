@@ -137,6 +137,32 @@ class PhotoPromptTests(unittest.TestCase):
         _, width, height = photos._source_to_webp(source.getvalue(), full_length=False)
         self.assertEqual((width, height), (512, 512))
 
+    def test_dynamic_npc_prompt_uses_saved_identity_and_requested_clothing(self):
+        from social_world import create_character, empty_world
+
+        world = empty_world()
+        npc, _ = create_character(world, "Hatice", "komşu", "ayse", "Ayşe")
+        prompt = characters.foto_promptu(
+            npc, scene_prompt="USER PHOTO REQUEST (highest priority): kırmızı elbise, başörtüsüz."
+        )
+        self.assertIn(npc["appearance_prompt"], prompt)
+        self.assertIn("kırmızı elbise, başörtüsüz", prompt)
+        self.assertNotIn(npc["default_clothing"], prompt)
+
+    def test_group_reference_composite_accepts_two_separate_images(self):
+        from io import BytesIO
+
+        refs = []
+        for color in ("red", "blue"):
+            image = BytesIO()
+            Image.new("RGB", (128, 192), color).save(image, format="PNG")
+            refs.append(image.getvalue())
+        composite = photos._compose_group_reference(refs)
+        with Image.open(BytesIO(composite)) as output:
+            self.assertEqual(output.size, (1024, 1024))
+            self.assertEqual(output.format, "WEBP")
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -36,10 +36,25 @@ class ConversationGuidanceTests(unittest.TestCase):
         for key in ("leyla", "merve", "asli", "dilek", "ece", "ayse", "dondu"):
             self.assertIn(namespace["KARAKTER_PROMPTLARI"][key], profiles[key]["prompt"])
 
+    def test_ai_horde_provider_and_selected_model_are_pinned(self):
+        source = (ROOT / "ai.py").read_text(encoding="utf-8")
+        self.assertIn('LLM_PROVIDER = "aihorde"', source)
+        self.assertIn('AI_HORDE_MODELS = "koboldcpp/G4-MeroMero-26B-A4B-it-uncensored-heretic"', source)
+        self.assertIn("No automatic provider fallback", source)
+
+    def test_adult_chat_and_dialogue_guidance_keep_personality_and_no_fixed_length(self):
+        config = (ROOT / "config.py").read_text(encoding="utf-8")
+        characters = (ROOT / "characters.py").read_text(encoding="utf-8")
+        ai = (ROOT / "ai.py").read_text(encoding="utf-8")
+        self.assertIn("gündelik argo veya küfür kullanabilirsin", config)
+        self.assertIn("Sabit kelime sınırın yok", characters)
+        self.assertIn("Sabit kelime veya cümle sınırın yok", ai)
+
     def test_changed_python_modules_parse(self):
-        for filename in ("ai.py", "characters.py", "photos.py", "main.py", "config.py", "voice.py"):
+        for filename in ("ai.py", "characters.py", "photos.py", "main.py", "config.py", "voice.py", "scene_memory.py"):
             ast.parse((ROOT / filename).read_text(encoding="utf-8"), filename=filename)
 
 
 if __name__ == "__main__":
     unittest.main()
+

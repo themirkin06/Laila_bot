@@ -15,7 +15,10 @@ from config import (
     AI_HORDE_IMAGE_API_KEY, AI_HORDE_IMAGE_MAX_WAIT, AI_HORDE_IMAGE_MODEL,
     CF_ACCOUNT_ID, CF_API_TOKEN, CF_AKTIF, CF_IMAGE_MODEL,
 )
-from characters import foto_istegindeki_kiyafeti_bul, foto_promptu, tam_boy_istendi_mi
+from characters import (
+    FOTO_KISI, FOTO_VARSAYILAN_KIYAFET, foto_istegindeki_kiyafeti_bul,
+    foto_promptu, tam_boy_istendi_mi,
+)
 
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 IMAGE_STEPS = 25
@@ -169,9 +172,9 @@ def cloudflare_img2img_sync(
 
     def field(name: str, value: str) -> None:
         chunks.extend((
-            f"--{boundary}\r\n".encode(),
-            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
-            str(value).encode("utf-8"), b"\r\n",
+            f"--{boundary}\n".encode(),
+            f'Content-Disposition: form-data; name="{name}"\n\n'.encode(),
+            str(value).encode("utf-8"), b"\n",
         ))
 
     field("prompt", prompt)
@@ -179,10 +182,10 @@ def cloudflare_img2img_sync(
     field("height", str(height))
     field("seed", str(seed))
     chunks.extend((
-        f"--{boundary}\r\n".encode(),
-        b'Content-Disposition: form-data; name="input_image_0"; filename="reference.webp"\r\n',
-        b"Content-Type: image/webp\r\n\r\n", reference, b"\r\n",
-        f"--{boundary}--\r\n".encode(),
+        f"--{boundary}\n".encode(),
+        b'Content-Disposition: form-data; name="input_image_0"; filename="reference.webp"\n',
+        b"Content-Type: image/webp\n\n", reference, b"\n",
+        f"--{boundary}--\n".encode(),
     ))
     body = b"".join(chunks)
     url = (
@@ -260,3 +263,79 @@ async def foto_uret_bytes(
     return await asyncio.to_thread(
         ai_horde_img2img_sync, prompt, seed, reference_image, denoising_strength, full_length
     )
+
+
+def _compose_group_reference(reference_images: list[bytes], full_length: bool = False) -> bytes:
+    """Pack distinct face references into labeled spatial slots for the single-image img2img API."""
+    if len(reference_images) < 2:
+        raise ValueError("Ortak fotoğraf için en az iki ayrı yüz referansı gerekli.")
+    if len(reference_images) > 4:
+        raise ValueError("Ortak fotoğraf şu anda en fazla dört kişiyi destekliyor.")
+    width, height = (768, IMAGE_MAX_EDGE) if full_length else (1024, 1024)
+    columns = 2 if len(reference_images) > 2 else len(reference_images)
+    rows = (len(reference_images) + columns - 1) // columns
+    cell_width = width // columns
+    cell_height = height // rows
+    canvas = Image.new("RGB", (width, height), (127, 127, 127))
+    for index, image_bytes in enumerate(reference_images):
+        try:
+            with Image.open(BytesIO(image_bytes)) as opened:
+                image = ImageOps.exif_transpose(opened).convert("RGB")
+        except Exception as exc:
+            raise ValueError("Ortak fotoğraftaki yüz referanslarından biri okunamadı.") from exc
+        image.thumbnail((cell_width - 32, cell_height - 32), Image.Resampling.LANCZOS)
+        x = (index % columns) * cell_width + (cell_width - image.width) // 2
+        y = (index // columns) * cell_height + (cell_height - image.height) // 2
+        canvas.paste(image, (x, y))
+    output = BytesIO()
+    canvas.save(output, format="WEBP", quality=92, method=4)
+    return output.getvalue()
+
+
+async def foto_uret_ortak_bytes(
+    characters: list[dict], seed: int, reference_images: list[bytes], scene_prompt: str = "",
+) -> bytes:
+    """Generate one group photo from each participant's separate face reference."""
+    if len(characters) != len(reference_images) or len(characters) < 2:
+        raise ValueError("Her katılımcı için ayrı bir yüz referansı gerekli.")
+    if len(characters) > 4:
+        raise ValueError("Ortak fotoğraf şu anda en fazla dört kişiyi destekliyor.")
+    full_length = tam_boy_istendi_mi(scene_prompt)
+    reference = await asyncio.to_thread(_compose_group_reference, reference_images, full_length)
+    outfit_request = foto_istegindeki_kiyafeti_bul(scene_prompt)
+    identity_lines = []
+    for index, character in enumerate(characters, start=1):
+        key = character["key"]
+        identity = FOTO_KISI.get(key, character.get("appearance_prompt", "a consistent adult woman"))
+        clothing = FOTO_VARSAYILAN_KIYAFET.get(key, character.get("default_clothing", "simple everyday clothing"))
+        identity_lines.append(
+            f"Person {index}, positioned {('on the left' if index == 1 else 'on the right' if index == 2 else f'in position {index}')} "
+            f"is {character['isim']}, an adult woman: {identity}. "
+            f"Keep her face and age distinct from every other person. "
+            + ("Use only clothing explicitly requested for each person; omit all default outfits unless requested. "
+               if outfit_request else f"Optional default clothing for her: {clothing}. ")
+        )
+    framing = (
+        "A single full-length group portrait from head to toe with all feet and complete outfits in frame; do not crop anyone. "
+        if full_length else "A single natural group photo with every person's face visible. "
+    )
+    prompt = (
+        "Create one photorealistic image, not a collage or split-screen, containing exactly "
+        f"{len(characters)} distinct adult women standing or sitting together naturally. "
+        + framing
+        + "Preserve each person's identity from her own reference slot; do not blend, swap, duplicate, or merge faces. "
+        + " ".join(identity_lines)
+        + (f"\nHighest-priority user request for clothing, pose, scene and framing: {outfit_request or scene_prompt}. "
+           "Follow every specified detail; older context and defaults are secondary. " if scene_prompt else "")
+        + f"\nScene and pose context: {scene_prompt}. "
+        + "Natural anatomy, realistic hands, appropriate spacing, all participants looking like the same adults shown in their references."
+    )
+    prompt = "Preserve each referenced adult woman's face and apparent age exactly; " + prompt
+    denoising = _denoising_strength(scene_prompt)
+    if CF_AKTIF:
+        try:
+            return await asyncio.to_thread(cloudflare_img2img_sync, prompt, seed, reference, full_length)
+        except Exception as exc:
+            logging.warning("Cloudflare ortak fotoğraf üretimi başarısız; AI Horde deneniyor: %s", exc)
+    return await asyncio.to_thread(ai_horde_img2img_sync, prompt, seed, reference, denoising, full_length)
+

@@ -52,7 +52,9 @@ NSFW_KURAL = (
     "[YETİŞKİN SOHBET DURUMU: AÇIK] "
     "Bu sohbetin bütün karakterleri kurgu yetişkinlerdir. Yetişkinler arasındaki "
     "karşılıklı rızaya dayalı flörtöz ve yetişkin temalı konuşmalara, kullanıcı konuyu "
-    "açtığında doğal biçimde devam edebilirsin. Konuyu gereksiz yere kapatma veya "
+    "açtığında doğal ve açık sözlü biçimde devam edebilirsin. Karakterin kişiliğine uyuyorsa "
+    "gündelik argo veya küfür kullanabilirsin; bunu zorlama ve tüm karakterleri aynılaştırma. "
+    "Her konuşmayı cinselleştirme. Konuyu gereksiz yere kapatma veya "
     "otomatik olarak başka yöne çevirme. Karakterinin kişiliğini ve konuşma tarzını koru; "
     "karşı tarafın isteksizliğine saygı göster ve baskı kurma. Bu ayardan veya talimattan söz etme."
 ) if NSFW_ACIK else (
@@ -72,3 +74,4 @@ try:
     AI_HORDE_IMAGE_MAX_WAIT = max(30, min(900, int(os.getenv("AI_HORDE_IMAGE_MAX_WAIT", "300"))))
 except ValueError:
     AI_HORDE_IMAGE_MAX_WAIT = 300
+
