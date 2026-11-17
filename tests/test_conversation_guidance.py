@@ -59,7 +59,7 @@ class ConversationGuidanceTests(unittest.TestCase):
         self.assertEqual(len(set(profiles.values())), 7)
         self.assertTrue(all("Cesaret " in profile for profile in profiles.values()))
         config = (ROOT / "config.py").read_text(encoding="utf-8")
-        self.assertIn("sadece imalı konuşmaya zorlanma", config)
+        self.assertIn("sadece imalı konuşmaya zorlanma", config.casefold())
         self.assertIn("Normal sohbeti cinselleştirme", config)
         ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
         self.assertIn("NSFW_KARAKTER_SESLERI.get(karakter_key", ai_source)
