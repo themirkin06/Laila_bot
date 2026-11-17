@@ -429,20 +429,31 @@ def horde_prompt_olustur(messages: list, on_ek: str = ""):
         parcalar.append(("Asistan: " if r == "assistant" else "Kullanıcı: ") + t)
     return "\n\n".join(parcalar) + "\n\nAsistan:" + ((" " + on_ek) if on_ek else ""), ["\nKullanıcı:", "\nTalimatlar:", "\nAsistan:"]
 def dusunce_bloklarini_sil(metin: str) -> str:
-    """Kapalı düşünce bloklarını ve kapanmamış bloğun kalanını siler."""
-    # Horde bazen düşünceyi köşeli parantez içinde, uzun bir Türkçe etiketle döndürüyor.
-    # Kısa etiket regex'leri bu biçimi yakalayamadığından iç not kullanıcıya sızabiliyordu.
-    kare_dusunce = r"\[\s*(?:d[üu]ş[üu]nce(?:\s+s[üu]reci)?|thought(?:\s+process)?|analysis|reasoning|internal thoughts?)\s*[:：-]"
+    """Remove explicit thought sections while retaining an explicitly labeled final reply."""
+    metin = metin or ""
+    etiket = r"(?:d[üu]ş[üu]nce(?:\s+s[üu]reci)?|thought(?:\s+process)?|analysis|reasoning|internal thoughts?)"
+    kare_dusunce = r"\[\s*" + etiket + r"\s*[:：-]"
     metin = re.sub(kare_dusunce + r"[^\]]*\]", "", metin, flags=re.S | re.I)
     metin = re.sub(kare_dusunce + r"[^\]]*$", "", metin, flags=re.S | re.I)
     metin = re.sub(r"<\s*(think|thinking|thought|reasoning)\s*>.*?<\s*/\s*\1\s*>", "", metin, flags=re.S | re.I)
-    # Bazı Horde çıktıları kapanış etiketi olmadan kesilir. Açılıştan sonrası
-    # iç düşünce olabileceğinden, kullanıcıya gidecek aday yanıttan çıkar.
     acik = re.search(r"<\s*(?:think|thinking|thought|reasoning)\s*>", metin, flags=re.I)
     if acik:
         metin = metin[:acik.start()]
-    return metin.strip()
 
+    # Qwen may emit a plain, unbracketed "Düşünce süreci:" or "Analysis:" header.
+    # Discard that section unless it explicitly transitions to a labeled final answer.
+    etiketli = re.search(
+        r"(?im)^\s*(?:\[\s*" + etiket + r"\s*\]\s*[:：-]?\s*|" + etiket + r"\s*[:：-]\s*)",
+        metin,
+    )
+    if etiketli:
+        kalan = metin[etiketli.end():]
+        cevap = re.search(
+            r"(?im)^\s*(?:\[\s*(?:cevap|answer|final)\s*\]\s*[:：-]?\s*|(?:cevap|answer|final)\s*[:：-]\s*)",
+            kalan,
+        )
+        metin = kalan[cevap.end():] if cevap else metin[:etiketli.start()]
+    return metin.strip()
 
 # Yalnızca belirgin iç-analiz ifadelerini yakala. Genel kelimeler (ör. "system", "prompt")
 # tek başına ret sebebi değildir; normal diyalogda yanlış pozitif üretmemelidir.
@@ -738,6 +749,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
                         logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
                         continue
                     if sebep:
+                        if deneme == 0:
+                            logging.warning("AI Horde iç düşünce/bozuk çıktı üretti; aynı modelle bir kez daha deneniyor (%s).", sebep)
+                            continue
                         raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
                     break
                 temiz = aday
