@@ -190,7 +190,7 @@ ROUTEWAY_MODEL = os.getenv(
     "ROUTEWAY_MODEL", "gemma-4-26b-a4b-it-meromero:free"
 ).strip() or "gemma-4-26b-a4b-it-meromero:free"
 # Keep the user-selected Horde model fixed; environment overrides must not silently switch it.
-AI_HORDE_MODELS = "Qwen/Qwen3.8-Flash-Next"
+AI_HORDE_MODELS = "Nimbz/Gemma-4-Dark-Orthia-31B"
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)
