@@ -407,6 +407,11 @@ def horde_prompt_olustur(messages: list, on_ek: str = ""):
     return "\n\n".join(parcalar) + "\n\nAsistan:" + ((" " + on_ek) if on_ek else ""), ["\nKullanıcı:", "\nTalimatlar:", "\nAsistan:"]
 def dusunce_bloklarini_sil(metin: str) -> str:
     """Kapalı düşünce bloklarını ve kapanmamış bloğun kalanını siler."""
+    # Horde bazen düşünceyi köşeli parantez içinde, uzun bir Türkçe etiketle döndürüyor.
+    # Kısa etiket regex'leri bu biçimi yakalayamadığından iç not kullanıcıya sızabiliyordu.
+    kare_dusunce = r"\[\s*(?:d[üu]ş[üu]nce(?:\s+s[üu]reci)?|thought(?:\s+process)?|analysis|reasoning|internal thoughts?)\s*[:：-]"
+    metin = re.sub(kare_dusunce + r"[^\]]*\]", "", metin, flags=re.S | re.I)
+    metin = re.sub(kare_dusunce + r"[^\]]*$", "", metin, flags=re.S | re.I)
     metin = re.sub(r"<\s*(think|thinking|thought|reasoning)\s*>.*?<\s*/\s*\1\s*>", "", metin, flags=re.S | re.I)
     # Bazı Horde çıktıları kapanış etiketi olmadan kesilir. Açılıştan sonrası
     # iç düşünce olabileceğinden, kullanıcıya gidecek aday yanıttan çıkar.
