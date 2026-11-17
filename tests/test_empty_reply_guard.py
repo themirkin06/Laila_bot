@@ -7,6 +7,19 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class EmptyReplyGuardTests(unittest.TestCase):
+    def test_horde_wait_extends_only_for_active_queued_or_processing_job(self):
+        source = (ROOT / "ai.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "ai_horde_uret_sync"
+        )
+        function_source = ast.get_source_segment(source, function)
+        self.assertIn('son_durum.get("waiting", 0)', function_source)
+        self.assertIn('son_durum.get("processing", 0)', function_source)
+        self.assertIn("aktif_is > 0 and not uzatma_yapildi", function_source)
+        self.assertIn("AI_HORDE_TIMEOUT_GRACE", function_source)
+
     def test_turkish_square_bracketed_thought_is_removed_but_reply_survives(self):
         ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
         tree = ast.parse(ai_source)
