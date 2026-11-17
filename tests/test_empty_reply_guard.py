@@ -7,6 +7,35 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class EmptyReplyGuardTests(unittest.TestCase):
+    @staticmethod
+    def _load_horde_reply_cleaner():
+        source = (ROOT / "ai.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "horde_cevabini_temizle"
+        )
+        namespace = {
+            "re": __import__("re"),
+            "logging": __import__("logging"),
+            "_SIZINTI_KALIPLARI": [],
+            "konusma_etiketlerini_temizle": lambda text: text,
+        }
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(ROOT / "ai.py"), "exec"), namespace)
+        return namespace["horde_cevabini_temizle"]
+
+    def test_gemma_thought_channel_is_removed_and_reply_survives(self):
+        cleaner = self._load_horde_reply_cleaner()
+        sample = "<|channel|>thought\\n<|channel|>Ben de çok iyiyim, teşekkür ederim! Bugün neler yaptın bakalım?"
+        self.assertEqual(
+            cleaner(sample),
+            "Ben de çok iyiyim, teşekkür ederim! Bugün neler yaptın bakalım?",
+        )
+
+    def test_gemma_thought_only_channel_is_discarded(self):
+        cleaner = self._load_horde_reply_cleaner()
+        self.assertEqual(cleaner("<|channel|>thought\\nI should analyze the user's intent."), "")
+
     def test_horde_wait_extends_only_for_active_queued_or_processing_job(self):
         source = (ROOT / "ai.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
