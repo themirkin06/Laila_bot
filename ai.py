@@ -498,6 +498,8 @@ def horde_bozuk_mu(metin: str):
         return "boş cevap"
     if DUSUNCE_SIZINTISI.search(metin):
         return "düşünce metni sızdı"
+    if re.search(r"<\|channel\|>|<\|(?:thought|analysis)\|>", metin, flags=re.I):
+        return "model kanal etiketi sızdı"
     # Açık kalmış düşünce etiketleri kullanıcıya gösterilmesin.
     if re.search(r"(?i)<\s*(?:think|thinking|thought|reasoning)\s*>", metin):
         return "kapanmamış düşünce bloğu"
@@ -511,6 +513,19 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
     metin = re.sub(r"<start_of_turn>\s*(?:model|user)\s*", "", metin)
     metin = re.sub(r"<end_of_turn>", "", metin)
     metin = re.sub(r"<pad>", "", metin)
+    # Gemma 4 can wrap its completion in channel markers. Drop private thought/analysis.
+    gizli_kanal = re.search(
+        r"<\|channel\|>\s*(?:thought|analysis)\b", metin, flags=re.I
+    )
+    if gizli_kanal:
+        sonraki_kanal = re.search(r"<\|channel\|>", metin[gizli_kanal.end():], flags=re.I)
+        if not sonraki_kanal:
+            return ""
+        cevap_baslangici = gizli_kanal.end() + sonraki_kanal.end()
+        metin = metin[:gizli_kanal.start()] + metin[cevap_baslangici:]
+        metin = re.sub(r"^\s*(?:final|answer)\b\s*[:：-]?\s*", "", metin, count=1, flags=re.I)
+    # Remove remaining visible channel markers while retaining the reply text.
+    metin = re.sub(r"<\|channel\|>\s*(?:final|answer)?", "", metin, flags=re.I)
 
     # Yalnızca açık iç-analiz satırlarını çıkar; sıradan İngilizce/Türkçe cümleleri
     # "means that", "system" gibi genel kelimeler yüzünden silme.
@@ -596,6 +611,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Hareket yalnızca sahneye katkı sağlıyorsa kullan. Türkçede doğal olmayan 'içimde bir yer açıldı', "
         "'sana doğru bir adım atıyorum' gibi klişe ve çeviri kokan ifadelerden kaçın. "
         "Karakterin kişiliği konuşma seçimlerine yansısın; bunu açıklama.\n"
+        "[KARAKTERİN İÇ SESİ] Hikâye veya rol yapmada sahneye katkısı varsa karakterin anlık, kurgusal duygusunu "
+        "tek kısa birinci tekil cümleyle *italik* yazabilirsin. Her mesajda kullanma. Bu, gizli model muhakemesi, "
+        "kullanıcı niyetini değerlendirme veya cevap planı değildir. Düz sohbette iç ses ekleme.\n"
         "CANLI MESAJLAŞMA: Önce kullanıcının mesajının sosyal niyetini yakala: şaka, takılma, sevinç, dertleşme, "
         "bilgi isteği veya kısa bir onay mı? Buna uygun tepki ver. Şakaya şakayla, sevince sevinçle karşılık ver; "
         "espriyi açıklama ve her şeyi ciddi tavsiyeye çevirme. Kısa mesajlara kısa cevap ver. "
@@ -693,7 +711,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
 
     sistem_horde = (
         "ÖNCELİKLİ YANIT TALİMATI: Kullanıcı açıkça başka bir dil istemedikçe yalnızca doğal Türkçe yaz. "
-        "İngilizce analiz, iç düşünce, niyet/bağlam değerlendirmesi, profil özeti veya taslak üretme; "
+        "İngilizce analiz, modelin iç muhakemesi, niyet/bağlam değerlendirmesi, profil özeti veya taslak üretme; "
         "doğrudan karakterin kullanıcıya söyleyeceği Türkçe mesajla başla.\\n\\n"
         + (baslik + "\\n\\n" if AI_HORDE_EN_BASLIK else "")
         + sistem_horde_temel + "\\n\\n" + dogal_sohbet_kilavuzu
