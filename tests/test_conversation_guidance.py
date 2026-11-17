@@ -40,6 +40,8 @@ class ConversationGuidanceTests(unittest.TestCase):
         source = (ROOT / "ai.py").read_text(encoding="utf-8")
         self.assertIn('LLM_PROVIDER = "aihorde"', source)
         self.assertIn('AI_HORDE_MODELS = "Qwen/Qwen3.8-Flash-Next"', source)
+        self.assertIn("doğal Türkiye Türkçesiyle", source)
+        self.assertIn("iç muhakeme, niyet/bağlam/tepki kontrol listesi", source)
         self.assertIn("No automatic provider fallback", source)
 
     def test_adult_chat_and_dialogue_guidance_keep_personality_and_no_fixed_length(self):
