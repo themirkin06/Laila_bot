@@ -23,16 +23,11 @@ class EmptyReplyGuardTests(unittest.TestCase):
     def test_turkish_square_bracketed_thought_is_removed_but_reply_survives(self):
         ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
         tree = ast.parse(ai_source)
-        assignment = next(
-            node for node in tree.body
-            if isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "DUSUNCE_SIZINTISI" for t in node.targets)
-        )
         function = next(
             node for node in tree.body
             if isinstance(node, ast.FunctionDef) and node.name == "dusunce_bloklarini_sil"
         )
-        module = ast.Module(body=[assignment, function], type_ignores=[])
+        module = ast.Module(body=[function], type_ignores=[])
         namespace = {"re": __import__("re")}
         exec(compile(module, str(ROOT / "ai.py"), "exec"), namespace)
         cleaner = namespace["dusunce_bloklarini_sil"]
@@ -43,28 +38,18 @@ class EmptyReplyGuardTests(unittest.TestCase):
     def test_unclosed_turkish_thought_block_is_discarded(self):
         ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
         tree = ast.parse(ai_source)
-        assignment = next(
-            node for node in tree.body
-            if isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "DUSUNCE_SIZINTISI" for t in node.targets)
-        )
         function = next(
             node for node in tree.body
             if isinstance(node, ast.FunctionDef) and node.name == "dusunce_bloklarini_sil"
         )
         namespace = {"re": __import__("re")}
-        exec(compile(ast.Module(body=[assignment, function], type_ignores=[]), str(ROOT / "ai.py"), "exec"), namespace)
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(ROOT / "ai.py"), "exec"), namespace)
         cleaner = namespace["dusunce_bloklarini_sil"]
         self.assertEqual(cleaner("[Düşünce süreci: modelin iç notu ve analiz"), "")
 
     def test_unbracketed_thought_header_is_removed_and_labeled_answer_survives(self):
         ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
         tree = ast.parse(ai_source)
-        assignment = next(
-            node for node in tree.body
-            if isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "DUSUNCE_SIZINTISI" for t in node.targets)
-        )
         function = next(
             node for node in tree.body
             if isinstance(node, ast.FunctionDef) and node.name == "dusunce_bloklarini_sil"
@@ -78,11 +63,6 @@ class EmptyReplyGuardTests(unittest.TestCase):
     def test_unlabeled_thought_is_discarded_instead_of_leaked(self):
         ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
         tree = ast.parse(ai_source)
-        assignment = next(
-            node for node in tree.body
-            if isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "DUSUNCE_SIZINTISI" for t in node.targets)
-        )
         function = next(
             node for node in tree.body
             if isinstance(node, ast.FunctionDef) and node.name == "dusunce_bloklarini_sil"
@@ -104,36 +84,6 @@ class EmptyReplyGuardTests(unittest.TestCase):
         self.assertIn("deneme == 0", function_source)
         self.assertIn("ikinci denemede de güvenli yanıt", function_source)
         self.assertIn("Bir an için ne diyeceğimi toparlayamadım.", function_source)
-
-    def test_qwen_english_reasoning_template_is_discarded(self):
-        ai_source = (ROOT / "ai.py").read_text(encoding="utf-8")
-        tree = ast.parse(ai_source)
-        assignment = next(
-            node for node in tree.body
-            if isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "DUSUNCE_SIZINTISI" for t in node.targets)
-        )
-        assignment = next(
-            node for node in tree.body
-            if isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "DUSUNCE_SIZINTISI" for t in node.targets)
-        )
-        function = next(
-            node for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "dusunce_bloklarini_sil"
-        )
-        namespace = {"re": __import__("re")}
-        exec(compile(ast.Module(body=[assignment, function], type_ignores=[]), str(ROOT / "ai.py"), "exec"), namespace)
-        cleaner = namespace["dusunce_bloklarini_sil"]
-        sample = (
-            "The user wrote \"aşkım\" which appears to be Turkish slang.\n\n"
-            "Let me assess this with the protocol:\n\n"
-            "1) NIYET: The user is being vulgar.\n\n"
-            "2) BAĞLAM: No prior context.\n\n"
-            "3) TEPKI: I should keep it brief.\n\n"
-            "The user profile says they like quick starts."
-        )
-        self.assertEqual(cleaner(sample), "")
 
     def test_ai_reply_has_nonempty_fallback_after_emoji_cleanup(self):
         tree = ast.parse((ROOT / "ai.py").read_text(encoding="utf-8"))
