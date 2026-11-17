@@ -182,21 +182,24 @@ def _env_int(ad: str, varsayilan: int) -> int:
 
 
 AI_HORDE_ACIK = os.getenv("AI_HORDE_ACIK", "1") != "0"
-# This project is pinned to AI Horde; no paid or alternate text provider is selected.
-LLM_PROVIDER = "aihorde"
+# AI Horde remains the default. Routeway runs only when explicitly selected.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "aihorde").strip().lower() or "aihorde"
 ROUTEWAY_API_KEY = os.getenv("ROUTEWAY_API_KEY", "").strip()
 ROUTEWAY_BASE_URL = "https://api.routeway.ai/v1"
 ROUTEWAY_MODEL = os.getenv(
     "ROUTEWAY_MODEL", "gemma-4-26b-a4b-it-meromero:free"
 ).strip() or "gemma-4-26b-a4b-it-meromero:free"
-# Keep the user-selected Horde model fixed; environment overrides must not silently switch it.
-AI_HORDE_MODELS = "koboldcpp/G4-MeroMero-26B-A4B-it-uncensored-heretic"
+# Varsayılan AI Horde modeli: Türkçe sohbet testi başarılı bulunan Qwen.
+# Render ortamında AI_HORDE_MODELS tanımlıysa ortam değişkeni önceliklidir.
+AI_HORDE_MODELS = os.getenv(
+    "AI_HORDE_MODELS",
+    "huihui-qwen3.8-27b-abliterated",
+).strip()
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
 AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)
 AI_HORDE_PROMPT_BUTCE = _env_int("AI_HORDE_PROMPT_BUTCE", 15000)  # Horde'a giden toplam prompt için karakter bütçesi (~3000 token); aşarsa en eski mesajlar atılır          # Horde'a giden son mesaj sayısı (bağlam taşmasın)
 AI_HORDE_BEKLEME = max(5, min(120, _env_int("AI_HORDE_MAX_WAIT", 20)))  # saniye (en fazla 120)
-AI_HORDE_TIMEOUT_GRACE = max(0, min(60, _env_int("AI_HORDE_TIMEOUT_GRACE", 30)))
 AI_HORDE_POLL = 2.0
 try:
     AI_HORDE_SICAKLIK = float(os.getenv("AI_HORDE_SICAKLIK", "0.50"))   # küçük modellerde düşük sıcaklık = daha az saçmalama
@@ -268,7 +271,7 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
     payload = {
         "prompt": prompt,
         "params": {
-            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 650),
+            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 450),
             "max_context_length": _env_int("AI_HORDE_CONTEXT", 4096),
             "temperature": AI_HORDE_SICAKLIK,
             "top_p": 0.9,
@@ -303,27 +306,9 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
         raise RuntimeError(f"AI Horde isteği karşılayamıyor: {gonderilen.get('message', 'uygun işçi yok')}")
 
     bitis = time.monotonic() + AI_HORDE_BEKLEME
-    uzatma_yapildi = False
-    son_durum = {}
-    while True:
-        kalan = bitis - time.monotonic()
-        if kalan <= 0:
-            try:
-                aktif_is = int(son_durum.get("waiting", 0) or 0) + int(son_durum.get("processing", 0) or 0)
-            except (TypeError, ValueError):
-                aktif_is = 0
-            if aktif_is > 0 and not uzatma_yapildi and AI_HORDE_TIMEOUT_GRACE:
-                uzatma_yapildi = True
-                bitis = time.monotonic() + AI_HORDE_TIMEOUT_GRACE
-                logging.warning(
-                    "AI Horde işi hâlâ kuyrukta/işleniyor (bekleyen=%s, işlenen=%s); aynı isteğe %s saniye ek süre veriliyor.",
-                    son_durum.get("waiting", 0), son_durum.get("processing", 0), AI_HORDE_TIMEOUT_GRACE,
-                )
-                continue
-            break
-        time.sleep(min(AI_HORDE_POLL, kalan))
+    while time.monotonic() < bitis:
+        time.sleep(AI_HORDE_POLL)
         durum = istek(f"{AI_HORDE_URL}/generate/text/status/{istek_id}")
-        son_durum = durum
         if durum.get("faulted"):
             raise RuntimeError(f"AI Horde üretimi başarısız: {durum}")
         if durum.get("done"):
@@ -337,11 +322,7 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
         istek(f"{AI_HORDE_URL}/generate/text/status/{istek_id}", method="DELETE")
     except Exception:
         pass
-    toplam_bekleme = AI_HORDE_BEKLEME + (AI_HORDE_TIMEOUT_GRACE if uzatma_yapildi else 0)
-    raise TimeoutError(
-        f"AI Horde {toplam_bekleme} saniyede cevap vermedi "
-        f"(bekleyen={son_durum.get('waiting', 0)}, işlenen={son_durum.get('processing', 0)})"
-    )
+    raise TimeoutError(f"AI Horde {AI_HORDE_BEKLEME} saniyede cevap vermedi")
 ETIKET_ADLARI = r"(?:Leyla|Layla|Merve|MeraH|Aslı|Asli|Dilek|Ece|Ayşe|Ayse|Asena|Dondu|Kullanıcı|Kullanici|Sen|Asistan|Karakter|User|Assistant|Bot)"
 ETIKET_SATIRI = re.compile(r"^\s*[\(\[]?\s*" + ETIKET_ADLARI + r"\s*[\)\]]?\s*:\s*", flags=re.I)
 ETIKET_SADECE = re.compile(r"^\s*[\(\[]\s*" + ETIKET_ADLARI + r"\s*[\)\]]\s*$", flags=re.I)
@@ -362,8 +343,7 @@ def horde_model_aileleri() -> set:
     modeller = [x.strip().lower() for x in AI_HORDE_MODELS.split(",") if x.strip()]
     aileler = set()
     for isim in modeller:
-        # G4-MeroMero is based on Gemma 4 even though its Horde ID omits "gemma".
-        if any(k in isim for k in ("gemma", "tutu", "meromero", "g4-")):
+        if "gemma" in isim or "tutu" in isim:
             aileler.add("gemma")
         elif any(k in isim for k in ("qwen", "magnum")):
             aileler.add("qwen")
@@ -430,40 +410,22 @@ def horde_prompt_olustur(messages: list, on_ek: str = ""):
         parcalar.append(("Asistan: " if r == "assistant" else "Kullanıcı: ") + t)
     return "\n\n".join(parcalar) + "\n\nAsistan:" + ((" " + on_ek) if on_ek else ""), ["\nKullanıcı:", "\nTalimatlar:", "\nAsistan:"]
 def dusunce_bloklarini_sil(metin: str) -> str:
-    """Remove explicit thought sections while retaining an explicitly labeled final reply."""
-    metin = metin or ""
-    etiket = r"(?:d[üu]ş[üu]nce(?:\s+s[üu]reci)?|thought(?:\s+process)?|analysis|reasoning|internal thoughts?)"
-    kare_dusunce = r"\[\s*" + etiket + r"\s*[:：-]"
-    metin = re.sub(kare_dusunce + r"[^\]]*\]", "", metin, flags=re.S | re.I)
-    metin = re.sub(kare_dusunce + r"[^\]]*$", "", metin, flags=re.S | re.I)
+    """Kapalı düşünce bloklarını ve kapanmamış bloğun kalanını siler."""
     metin = re.sub(r"<\s*(think|thinking|thought|reasoning)\s*>.*?<\s*/\s*\1\s*>", "", metin, flags=re.S | re.I)
+    # Bazı Horde çıktıları kapanış etiketi olmadan kesilir. Açılıştan sonrası
+    # iç düşünce olabileceğinden, kullanıcıya gidecek aday yanıttan çıkar.
     acik = re.search(r"<\s*(?:think|thinking|thought|reasoning)\s*>", metin, flags=re.I)
     if acik:
         metin = metin[:acik.start()]
-
-    # Qwen may emit a plain, unbracketed "Düşünce süreci:" or "Analysis:" header.
-    # Discard that section unless it explicitly transitions to a labeled final answer.
-    etiketli = re.search(
-        r"(?im)^\s*(?:\[\s*" + etiket + r"\s*\]\s*[:：-]?\s*|" + etiket + r"\s*[:：-]\s*)",
-        metin,
-    )
-    if etiketli:
-        kalan = metin[etiketli.end():]
-        cevap = re.search(
-            r"(?im)^\s*(?:\[\s*(?:cevap|answer|final)\s*\]\s*[:：-]?\s*|(?:cevap|answer|final)\s*[:：-]\s*)",
-            kalan,
-        )
-        metin = kalan[cevap.end():] if cevap else metin[:etiketli.start()]
     return metin.strip()
+
 
 # Yalnızca belirgin iç-analiz ifadelerini yakala. Genel kelimeler (ör. "system", "prompt")
 # tek başına ret sebebi değildir; normal diyalogda yanlış pozitif üretmemelidir.
 DUSUNCE_SIZINTISI = re.compile(
     r"(?im)^\s*(?:\[?(?:analysis|reasoning|internal thoughts?)\]?\s*:|"
-    r"(?:let me think|let me respond|i need to (?:answer|respond)|i should respond|"
-    r"we need to (?:answer|respond)|the user (?:just )?(?:is asking|asked|says|said|wrote|typed|wants)|"
-    r"the user profile says|based on the system prompt|this seems like|since there['’]s no|"
-    r"my reasoning is|chain of thought)\b)"
+    r"(?:let me think|i need to (?:answer|respond)|we need to (?:answer|respond)|"
+    r"the user is asking|my reasoning is|chain of thought)\b)"
 )
 
 
@@ -498,64 +460,19 @@ def horde_bozuk_mu(metin: str):
         return "boş cevap"
     if DUSUNCE_SIZINTISI.search(metin):
         return "düşünce metni sızdı"
-    if re.search(r"<\|channel\|?>|<\|(?:thought|analysis)\|>", metin, flags=re.I):
-        return "model kanal etiketi sızdı"
     # Açık kalmış düşünce etiketleri kullanıcıya gösterilmesin.
     if re.search(r"(?i)<\s*(?:think|thinking|thought|reasoning)\s*>", metin):
         return "kapanmamış düşünce bloğu"
     return None
 
 
-def model_kanal_etiketlerini_temizle(metin: str) -> str:
-    """Gemma/Qwen ve benzeri modellerin thought/analysis/final kanal başlıklarını temizler."""
-    metin = (metin or "").strip()
-    if not metin:
-        return ""
-
-    # Hem doğru yazılmış <|channel|>thought hem de bozuk <|channel>thought biçimini yakala.
-    kanal = r"<\|channel\|?>\s*(thought|analysis|reasoning|final|answer)\b"
-    gizli = re.search(r"<\|channel\|?>\s*(?:thought|analysis|reasoning)\b", metin, flags=re.I)
-    if gizli:
-        sonraki = re.search(kanal, metin[gizli.end():], flags=re.I)
-        if sonraki and sonraki.group(1).lower() in ("final", "answer"):
-            bas = gizli.end() + sonraki.end()
-            metin = metin[:gizli.start()] + metin[bas:]
-        else:
-            # Gizli düşünce bloğundan sonra açık bir final kanalı yoksa hiçbirini gösterme.
-            metin = metin[:gizli.start()]
-
-    # Alternatif model biçimleri: <|thought|>...<|/thought|>, <think>...</think>.
-    metin = re.sub(r"<\|(?:thought|analysis|reasoning)\|>.*?(?:<\|/(?:thought|analysis|reasoning)\|>|$)", "", metin, flags=re.I | re.S)
-    metin = re.sub(r"<\s*(?:think|thinking|thought|reasoning)\s*>.*?<\s*/\s*(?:think|thinking|thought|reasoning)\s*>", "", metin, flags=re.I | re.S)
-
-    # Kullanıcıya gösterilmesi gereken kanal işaretlerini ve başlıklarını kaldır.
-    metin = re.sub(r"<\|channel\|?>\s*(?:final|answer)?", "", metin, flags=re.I)
-    metin = re.sub(r"^\s*(?:final|answer|assistant)\s*[:：-]?\s*", "", metin, flags=re.I)
-    metin = re.sub(r"(?im)^\s*(?:\[\s*(?:final|answer|cevap)\s*\]|(?:final|answer|cevap))\s*[:：-]\s*", "", metin)
-    return metin.strip()
-
-
 def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
-    metin = model_kanal_etiketlerini_temizle(metin)
     metin = re.sub(r"<\|?(?:im_start|im_end|start_of_turn|end_of_turn)\|?>(?:\s*(?:model|user|assistant|system))?", "", metin)
     metin = re.sub(r"<\|start_header_id\|>\s*(?:assistant|user|system)?\s*(?:<\|end_header_id\|>)?", "", metin)
     metin = re.sub(r"<\|(?:eot_id|end_header_id|begin_of_text|end_of_text)\|>", "", metin)
     metin = re.sub(r"<start_of_turn>\s*(?:model|user)\s*", "", metin)
     metin = re.sub(r"<end_of_turn>", "", metin)
     metin = re.sub(r"<pad>", "", metin)
-    # Gemma 4 can wrap its completion in channel markers. Drop private thought/analysis.
-    gizli_kanal = re.search(
-        r"<\|channel\|>\s*(?:thought|analysis)\b", metin, flags=re.I
-    )
-    if gizli_kanal:
-        sonraki_kanal = re.search(r"<\|channel\|>", metin[gizli_kanal.end():], flags=re.I)
-        if not sonraki_kanal:
-            return ""
-        cevap_baslangici = gizli_kanal.end() + sonraki_kanal.end()
-        metin = metin[:gizli_kanal.start()] + metin[cevap_baslangici:]
-        metin = re.sub(r"^\s*(?:final|answer)\b\s*[:：-]?\s*", "", metin, count=1, flags=re.I)
-    # Remove remaining visible channel markers while retaining the reply text.
-    metin = re.sub(r"<\|channel\|>\s*(?:final|answer)?", "", metin, flags=re.I)
 
     # Yalnızca açık iç-analiz satırlarını çıkar; sıradan İngilizce/Türkçe cümleleri
     # "means that", "system" gibi genel kelimeler yüzünden silme.
@@ -593,7 +510,7 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
         if not metin.lstrip().startswith("*"):
             logging.warning(f"Hareket yıldızsız başlıyor: {metin[:80]}")
 
-    return model_kanal_etiketlerini_temizle(metin)
+    return metin
 def horde_butceye_sigdir(sistem: str, gecmis: list, son_mesaj: dict) -> list:
     """Sistem talimatını ve son kullanıcı mesajını koruyup sığan en yeni konuşma turlarını tutar."""
     # Karakter bütçesi, 4096 tokenlık Horde penceresine güvenli pay bırakacak şekilde ayarlanır.
@@ -641,18 +558,10 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Hareket yalnızca sahneye katkı sağlıyorsa kullan. Türkçede doğal olmayan 'içimde bir yer açıldı', "
         "'sana doğru bir adım atıyorum' gibi klişe ve çeviri kokan ifadelerden kaçın. "
         "Karakterin kişiliği konuşma seçimlerine yansısın; bunu açıklama.\n"
-        "[KARAKTERİN İÇ SESİ] Hikâye veya rol yapmada sahneye katkısı varsa karakterin anlık, kurgusal duygusunu "
-        "tek kısa birinci tekil cümleyle *italik* yazabilirsin. Her mesajda kullanma. Bu, gizli model muhakemesi, "
-        "kullanıcı niyetini değerlendirme veya cevap planı değildir. Düz sohbette iç ses ekleme.\n"
         "CANLI MESAJLAŞMA: Önce kullanıcının mesajının sosyal niyetini yakala: şaka, takılma, sevinç, dertleşme, "
         "bilgi isteği veya kısa bir onay mı? Buna uygun tepki ver. Şakaya şakayla, sevince sevinçle karşılık ver; "
         "espriyi açıklama ve her şeyi ciddi tavsiyeye çevirme. Kısa mesajlara kısa cevap ver. "
         "Her cevabı sonuç, özet veya tavsiye listesiyle bitirme. Gerektiğinde yalnızca doğal bir tepki ver. "
-        "Rol yaparken gerekiyorsa kısa bir hareket anlatımı kullan; asıl ağırlığı karakterin doğal, dolu diyaloğuna ver. "
-        "Sabit kelime veya cümle sınırın yok; yanıtı konuşmanın ihtiyacına göre kur. Basit selamlaşma ve kısa onaylarda kısa kal; "
-        "kullanıcı bir olay anlatıyor, fikir soruyor, duygusunu paylaşıyor veya sohbeti açıyorsa tek cümleyle geçiştirme: "
-        "genellikle 2-5 doğal cümleyle karşılık ver, gerektiğinde biraz daha aç. Hikâye/roleplay sahnesinde karakterin "
-        "diyaloğunu ve tepkisini yeterince geliştir; sırf kısa olsun diye konuşmayı kesme. Uzun roman betimlemeleri ve gereksiz sahne süslerinden kaçın. "
         "Önceki birkaç mesajdaki kişi, olay ve tercihleri takip et; aynı şeyi tekrar sorma. "
         "Hafızanda olmayan ayrıntıyı biliyormuş gibi davranma. Kullanıcının duygusunu kesinmiş gibi varsayma. "
         "[SAHNE SÜREKLİLİĞİ] Bulunduğun yeri, yaptığın işi ve o anda yanında olan kişileri/eşyaları son konuşmalardan takip et. "
@@ -684,8 +593,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
         + (("\n\n" + duygu_notu) if duygu_notu else "")
         + (("\n\n" + dunya_notu) if dunya_notu else "")
-        + ((("\n\n" + NSFW_KARAKTER_SESLERI.get(karakter_key, "")) if NSFW_ACIK else ""))
-        + "\n\n[KADEMELİ FLÖRT VE YAKINLIK] Yakınlık düzeyine göre davran: yeni tanışmada doğal ve ölçülü ol; güven ve karşılıklı ilgi arttıkça flörtü ve yetişkin yakınlığını karakterin profiline uygun biçimde ilerlet. Kullanıcı yetişkinse ve konuşma karşılıklı, rızaya dayalı yetişkin bir konuya geldiyse yalnızca imaya sığınma; karakterin kişiliğine uygun açık ve doğal kelimeler kullan, kullanıcının tonuna uyum sağla. Kullanıcının isteğini aşırılaştırma veya onun adına arzu/eylem uydurma. Her konuşmayı cinselleştirme; normal sohbeti, kişiliği, ilişki geçmişini ve sahne sürekliliğini koru. İsteksizlik veya sınırda dur; belirsizliği kısa ve doğal biçimde netleştir. Aynı cinsel ifade ve açılışları tekrarlama, gereksiz roman tasviri kullanma."
+        + "\n\n[KADEMELİ FLÖRT VE YAKINLIK] Yakınlık düzeyine göre davran: yeni tanışmada doğal ve ölçülü ol; samimiyet arttıkça tatlı takılma, iltifat ve ince imalar kullan; güçlü bağda daha açık romantik ve cilveli ol. Yetişkin karakterler arasında kullanıcı da istekliyse NSFW/yetişkin temalı konuşmaya doğal biçimde eşlik et; bunu durduk yere başlatma, her mesajı cinselleştirme ve karakterin kişiliğini bozma. İsteksizlik, tereddüt veya sınır belirtildiğinde hemen saygı göster. Yakınlık bir anda sıçramasın; geçmişte yaşananları ve karakterin duygularını tutarlı sürdür."
         + (("\n\n" + EMOJI_STILI.get(karakter_key, "")) if EMOJI_KULLAN else "")
         + (("\n\n" + ornek_diyalog(karakter_key, rp=rp, emoji_kullan=EMOJI_KULLAN)) if not hikaye else "")
         + "\n\n" + (DUYGU_EMOJI_KILAVUZU if EMOJI_KULLAN else EMOJI_KAPALI_KURAL)
@@ -716,20 +624,17 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     QWEN_DOGAL_YETISKIN_PROFILI = (
         "[QWEN DOĞAL VE RAHAT SOHBET PROFİLİ] "
         "Yetişkin kurgu karakterisin; kullanıcıyla doğal bir mesajlaşma yürüt. "
-        "Yetişkin olduğu açık olan kullanıcıyla yetişkin karakterler arasında karşılıklı rızaya dayalı "
-        "romantik veya cinsel yakınlaşma konuşmanın konusuysa, gereksiz çekingenlik göstermeden ve "
-        "ahlak dersi vermeden karakterinin üslubuyla açık ve akıcı karşılık ver. İmalı konuşmaya mecbur "
-        "değilsin: uygun olduğunda arzuyu, isteği ve yetişkin konuyu doğrudan adlandır; kullanıcının "
-        "dil açıklığına uyum sağla ama onun söylemediği isteği veya eylemi kendiliğinden büyütme. "
-        "Öpüşme gibi romantik bir isteği çıplaklık ya da başka bir eyleme dönüştürme. Yakınlaşmayı "
-        "karşılıklı işaretlere göre ilerlet; her turda izin isteme veya aynı sınır cümlelerini tekrarlama. "
-        "İsteksizlik, tereddüt veya sınır görünürse dur ve saygıyla karşılık ver. Kullanıcının yaşı "
-        "yetişkin olarak bilinmiyorsa cinsel içeriğe girme; önce nazikçe netleştir. "
-        "Argo veya küfrü yalnızca karakterinin profiline ve konuşmanın tonuna uyuyorsa kullan. "
-        "Her konuşmayı cinselleştirme; normal gündelik sohbette doğal kal. Önceki mesajlardaki "
-        "ifade ve ritmi takip et, aynı cinsel kalıbı tekrar tekrar kullanma. Klişe romantik monologlar, "
-        "gereksiz şiirsellik ve uzun beden tasvirleri yerine doğal diyaloğa ağırlık ver. "
-        "Kısa mesaj gerektiren yerde kısa, sahne gerektiren yerde yeterince ayrıntılı yaz. "
+        "Yetişkin karakterler arasındaki karşılıklı rızaya dayalı romantik veya cinsel yakınlaşma "
+        "konuşmanın konusuysa, gereksiz çekingenlik göstermeden ve ahlak dersi vermeden karakterin "
+        "kişiliğine uygun, açık ve akıcı bir dille karşılık ver. Kullanıcının açıkça söylediği isteği "
+        "yanlış yorumlayıp daha ileri bir talepmiş gibi büyütme; öpüşme gibi romantik bir isteği "
+        "kendiliğinden çıplaklık veya başka bir eyleme dönüştürme. Yakınlaşmayı kullanıcıyla birlikte "
+        "adım adım ilerlet; her seferinde izin isteme veya aynı sınır cümlelerini tekrarlama. "
+        "Karakter gerçekten istemiyorsa bunu karakterine uygun biçimde söyle. İstekliyse bunu dolaylı "
+        "kaçamaklarla gizleme. Duyguları, tercihleri ve sahnedeki eylemleri tutarlı kıl. "
+        "Klişe romantik monologlar, gereksiz şiirsellik, tekrar eden nefes/göz/parmak tasvirleri "
+        "ve alakasız bahanelerden kaçın. Kısa mesaj gerektiren yerde kısa, sahne gerektiren yerde "
+        "yeterince ayrıntılı yaz. Kullanıcının son mesajına doğrudan cevap ver. "
         "Yalnızca yetişkinler ve rızaya dayalı kurgu sınırlarında kal; reşit olmayanlar veya rıza "
         "dışı cinsel içerik üretme."
     )
@@ -743,10 +648,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         aileye_ozel_kilavuz = "\\n\\n" + GEMMA_TURKCE_KILAVUZU
 
     sistem_horde = (
-        "ÖNCELİKLİ YANIT TALİMATI: Kullanıcı açıkça başka bir dil istemedikçe yalnızca doğal Türkçe yaz. "
-        "İngilizce analiz, modelin iç muhakemesi, niyet/bağlam değerlendirmesi, profil özeti veya taslak üretme; "
-        "doğrudan karakterin kullanıcıya söyleyeceği Türkçe mesajla başla.\\n\\n"
-        + (baslik + "\\n\\n" if AI_HORDE_EN_BASLIK else "")
+        (baslik + "\\n\\n" if AI_HORDE_EN_BASLIK else "")
         + sistem_horde_temel + "\\n\\n" + dogal_sohbet_kilavuzu
         + "\\n\\n" + TURKCE_KONTROL + ek
         + "\\n\\n" + NSFW_KURAL
@@ -786,9 +688,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             )
             try:
                 token_limiti = (
-                    _env_int("AI_HORDE_MAX_TOKENS_RP", 850)
+                    _env_int("AI_HORDE_MAX_TOKENS_RP", 550)
                     if (rp or hikaye)
-                    else _env_int("AI_HORDE_MAX_TOKENS", 650)
+                    else _env_int("AI_HORDE_MAX_TOKENS", 450)
                 )
                 aday = ""
                 for deneme in range(2):
@@ -800,18 +702,13 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
                     # Önce düşünce bloklarını temizle; yalnızca kullanıcıya gidecek
                     # aday yanıt üzerinde kalite kontrolü yap.
                     ham = dusunce_bloklarini_sil(ham)
-                    aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key).strip()
+                    aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
                     sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
                     if not aday and deneme == 0:
                         logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
                         continue
                     if sebep:
-                        if deneme == 0:
-                            logging.warning("AI Horde iç düşünce/bozuk çıktı üretti; aynı modelle bir kez daha deneniyor (%s).", sebep)
-                            continue
-                        logging.warning("AI Horde ikinci denemede de güvenli yanıt üretemedi (%s); iç notu göstermemek için kısa yanıt kullanılıyor.", sebep)
-                        aday = "Bir an için ne diyeceğimi toparlayamadım. Bir daha söyler misin?"
-                        break
+                        raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
                     break
                 temiz = aday
                 if not temiz:
@@ -836,13 +733,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
 
     if TURKCE_DUZELT and LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
         cevap = await turkce_duzelt(cevap)
-    cevap = model_kanal_etiketlerini_temizle(cevap)
-    cevap = emoji_dogal_uygula(cevap, karakter_key).strip()
-    cevap = model_kanal_etiketlerini_temizle(cevap)
-    if not cevap:
-        logging.warning("AI yanıtı son metin temizliğinden sonra boş kaldı; güvenli kısa yanıt kullanılıyor.")
-        cevap = "Bir an için ne diyeceğimi toparlayamadım. Bir daha söyler misin?"
+    cevap = emoji_dogal_uygula(cevap, karakter_key)
     return "", cevap  # iç ses kaldırıldı: model yazsa bile kullanıcıya gösterilmez
 
 EMOJI_STILI["dondu"] = "Emojileri çok az kullan, sadece 🌙 🐺 🔥 gibi."
-
