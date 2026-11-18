@@ -517,25 +517,58 @@ async def yakinlik_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- Fotoğraf havuzu komutları ---
+class YuzReferansiBulunamadiError(RuntimeError):
+    """The selected character has no registered reference or pool image."""
+
+
+class YuzReferansiIndirilemediError(RuntimeError):
+    """A registered Telegram image could not be retrieved for generation."""
+
+
 async def aday_gonder(bot, chat_id: int, key: str):
     """Aday fotoğraf üretir, altına Havuza ekle / At butonları koyar."""
     karakter = KARAKTERLER[key]
     await bot.send_chat_action(chat_id=chat_id, action="upload_photo")
-    ref_file_id = YUZ_REFERANSLARI.get(key) or (FOTO_HAVUZU.get(key) or [None])[0]
+    yuz_ref_id = YUZ_REFERANSLARI.get(key)
+    havuz_ref_id = next(iter(FOTO_HAVUZU.get(key, [])), None)
+    adaylar = []
+    if yuz_ref_id:
+        adaylar.append(("yüz referansı", yuz_ref_id))
+    if havuz_ref_id and havuz_ref_id != yuz_ref_id:
+        adaylar.append(("karakter fotoğrafı havuzu", havuz_ref_id))
+    if not adaylar:
+        raise YuzReferansiBulunamadiError(
+            f"{karakter['isim']} için başlangıç fotoğrafı yok. "
+            f"Bir fotoğrafı ‘yuzref {key}’ altyazısıyla gönder."
+        )
+
     ref_bytes = None
-    if ref_file_id:
+    for kaynak, file_id in adaylar:
         try:
-            tg_file = await bot.get_file(ref_file_id)
-            ref_bytes = bytes(await tg_file.download_as_bytearray())
+            tg_file = await bot.get_file(file_id)
+            indirilen = bytes(await tg_file.download_as_bytearray())
+            if indirilen:
+                ref_bytes = indirilen
+                if kaynak != "yüz referansı":
+                    logging.warning(
+                        "%s yüz referansı indirilemedi; fotoğraf havuzu yedeği kullanıldı.",
+                        karakter["isim"],
+                    )
+                break
         except Exception as e:
-            logging.warning(f"Aday fotoğraf için yüz referansı indirilemedi: {e}")
+            logging.warning("Aday fotoğraf için %s indirilemedi (%s): %s", kaynak, key, e)
+    if not ref_bytes:
+        raise YuzReferansiIndirilemediError(
+            f"{karakter['isim']} için kayıtlı fotoğraf Telegram'dan indirilemedi. "
+            f"Referansı yenilemek için fotoğrafı ‘yuzref {key}’ altyazısıyla yeniden gönder."
+        )
+
     foto = await foto_uret_bytes(karakter, random.randint(1, 999999), reference_image=ref_bytes)
     klavye = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Havuza ekle", callback_data=f"havuz_ekle_{key}"),
         InlineKeyboardButton("❌ At", callback_data="havuz_at"),
     ]])
     await bot.send_photo(chat_id=chat_id, photo=foto, reply_markup=klavye)
-
 
 async def uret_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Seçili karakter için bir aday fotoğraf üretir, beğenirsen havuza eklersin."""
@@ -549,6 +582,11 @@ async def uret_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"{KARAKTERLER[key]['isim']} için aday fotoğraf üretiliyor...")
     try:
         await aday_gonder(context.bot, update.effective_chat.id, key)
+    except YuzReferansiBulunamadiError as e:
+        await update.message.reply_text(str(e))
+    except YuzReferansiIndirilemediError as e:
+        logging.error(f"Aday fotoğraf hatası: {e}")
+        await update.message.reply_text(str(e))
     except Exception as e:
         logging.error(f"Aday fotoğraf hatası: {e}")
         await update.message.reply_text("Fotoğraf üretilemedi, biraz sonra tekrar dene.")
@@ -632,9 +670,14 @@ async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logging.error(f"Yüz referansı Redis'e kaydedilemedi: {e}")
                 await update.message.reply_text("Referans bu oturumda kaydedildi ama kalıcı kayıtta hata oldu.")
                 return
-        await update.message.reply_text(
-            f"✅ {KARAKTERLER[key]['isim']} için yüz referansı kaydedildi. Yeni üretilen fotoğraflarda bu yüzü temel alacağım."
-        )
+        if DB_AKTIF:
+            mesaj = f"✅ {KARAKTERLER[key]['isim']} için yüz referansı kalıcı kaydedildi."
+        else:
+            mesaj = (
+                f"✅ {KARAKTERLER[key]['isim']} için yüz referansı bu oturumda kaydedildi. "
+                "Kalıcı hafıza kapalı olduğundan bot yeniden başlatılırsa yeniden yüklemen gerekir."
+            )
+        await update.message.reply_text(mesaj + " Yeni üretilen fotoğraflarda bu yüzü temel alacağım.")
         return
 
     if ad in KARAKTERLER:

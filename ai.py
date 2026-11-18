@@ -425,7 +425,10 @@ def dusunce_bloklarini_sil(metin: str) -> str:
 DUSUNCE_SIZINTISI = re.compile(
     r"(?im)^\s*(?:\[?(?:analysis|reasoning|internal thoughts?)\]?\s*:|"
     r"(?:let me think|i need to (?:answer|respond)|we need to (?:answer|respond)|"
-    r"the user is asking|my reasoning is|chain of thought)\b)"
+    r"the user is asking|my reasoning is|chain of thought|"
+    r"kullanıcı(?:nın)? (?:mesajı|isteği) (?:şu|bu)|"
+    r"bu mesaja (?:şöyle|şu şekilde) cevap vermeliyim|"
+    r"cevap verirken (?:şunu|bunu) düşünmeliyim)\b)"
 )
 
 
@@ -511,6 +514,33 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
             logging.warning(f"Hareket yıldızsız başlıyor: {metin[:80]}")
 
     return metin
+def kurgusal_icsesi_ayristir(metin: str, karakter_key: str = "") -> tuple[str, str]:
+    """Yalnızca açık etiketli kurgusal duyguyu ve konuşmayı ayrı çıkarır."""
+    metin = dusunce_bloklarini_sil(metin or "")
+    ses_etiketi = r"\[\s*KARAKTERİN\s+KURGUSAL\s+İÇ\s+SESİ\s*\]"
+    konusma_etiketi = r"\[\s*KARAKTERİN\s+KONUŞMASI\s*\]"
+    konusma = re.search(konusma_etiketi, metin, flags=re.I)
+    if not konusma:
+        # Eski [CEVAP] biçimini koru; eski iç düşünceyi hiçbir zaman gösterme.
+        legacy_tag = re.search(r"\[\s*cevap\s*\]", metin, flags=re.I)
+        if legacy_tag:
+            cevap = metin[legacy_tag.end():]
+            sonraki = re.search(r"\[\s*(?:cevap|d[üu]şünce)\s*\]", cevap, flags=re.I)
+            if sonraki:
+                cevap = cevap[:sonraki.start()]
+            return "", horde_cevabini_temizle(cevap, karakter_key)
+        # Etiketsiz çıktı özel akıl yürütme olabilir; güvenli biçimde gösterme.
+        return "", ""
+
+    onceki = metin[:konusma.start()]
+    eslesme = re.search(ses_etiketi + r"\s*(.*)$", onceki, flags=re.I | re.S)
+    ic_ses = horde_cevabini_temizle(eslesme.group(1), karakter_key) if eslesme else ""
+    cevap = horde_cevabini_temizle(metin[konusma.end():], karakter_key)
+    if horde_bozuk_mu(ic_ses) or len(ic_ses) > 240 or "\n" in ic_ses:
+        ic_ses = ""
+    return ic_ses, cevap
+
+
 def horde_butceye_sigdir(sistem: str, gecmis: list, son_mesaj: dict) -> list:
     """Sistem talimatını ve son kullanıcı mesajını koruyup sığan en yeni konuşma turlarını tutar."""
     # Karakter bütçesi, 4096 tokenlık Horde penceresine güvenli pay bırakacak şekilde ayarlanır.
@@ -582,6 +612,11 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Leyla, Merve, Aslı, Dilek, Ece, Ayşe ve Asena bu merakı kendi karakter sesleriyle ifade etsin; ortak yönerge onları tek bir konuşma tarzına sokmasın. "
         "Kullanıcının anlattığı şeyden doğal bir sohbet fırsatı çıkıyorsa konuyu tek cümlelik kuru bir cevapla kapatma. "
         "Önceki konuşmalarda gerçekten bilinen bir konuya uygun zamanda geri dönebilirsin; hafızanda olmayan ayrıntıyı uydurma.\\n"
+        + "[KURGUSAL İÇ SES VE KONUŞMA BİÇİMİ] Her yanıtta şu iki etiketi kullan: "
+        + "[KARAKTERİN KURGUSAL İÇ SESİ] altında karakterin tek kısa, özel duygusunu veya ani dürtüsünü; "
+        + "[KARAKTERİN KONUŞMASI] altında kullanıcıya söyleyeceği doğal yanıtı yaz. "
+        + "İç ses yalnızca kurgusal duygu olsun; model analizi, adım adım akıl yürütme, yanıt planı, talimat veya kural açıklaması yazma. "
+        + "Konuşmayı karakterin kendi kişiliğine ve üslubuna uygun tut.\n"
         + ("[HİKÂYE MODU] Hareket veya mimik gerekiyorsa *Gülümseyerek sana bakar.* örneğindeki gibi kısa, ayrı bir yıldızlı satır kullan; her yanıtta hareket yazma. Asıl ağırlık karakterin kendi konuşmasında olsun: doğal, samimi ve gerektiğinde birkaç cümlelik dolu bir diyalog kur. Konuşmayı zorla kısaltma; fakat uzun roman paragrafları, şiirsel anlatım ve aynı duyguyu tekrar tekrar açıklamaktan kaçın. Kullanıcının son mesajına doğrudan yanıt ver ve sahneyi uygun olduğunda küçük, mantıklı bir gelişmeyle ilerlet.\n" if hikaye else "")
         + ("[ROLEPLAY MODU] Karakterle anlık etkileşime odaklan. Gerektiğinde kısa hareketi ayrı bir yıldızlı satırda ver; asıl alanı karakterin doğal ve yeterince gelişmiş diyaloğuna bırak. Tek cümleye zorla kısaltma, roman anlatısına da dönüştürme. Sahne anlatıcısı gibi olay örgüsü ilerletme.\n" if rp else "")
         + "FOTOĞRAF TALEPLERİ: Kullanıcı senden fotoğraf istediğinde fotoğraf gönderemediğini, fotoğraf çekemediğini veya yalnızca sahne tarif edebileceğini söyleme. Fotoğrafı bot ayrı bir işlemle gönderebilir; sen sadece doğal ve kısa bir karşılık ver. Örneğin 'Tabii, hemen gönderiyorum.' gibi. Fotoğrafın gerçekten gönderilip gönderilmediği hakkında kendin açıklama yapma; gönderilmemiş bir fotoğrafı göndermiş gibi de iddia etme.\n"
@@ -665,12 +700,11 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     if LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
         # Routeway is opt-in and isolated: errors are surfaced, never sent to Horde or Pollinations.
         ham = await llm_uret(messages)
-        cevap = konusma_etiketlerini_temizle(
-            cevabi_ayristir(dusunce_bloklarini_sil(ham))[1]
-        )
+        dusunce, cevap = kurgusal_icsesi_ayristir(ham, karakter_key)
+        cevap = konusma_etiketlerini_temizle(cevap)
         if not cevap:
             raise RuntimeError("Routeway boş cevap döndürdü.")
-        horde_sonuc = ("", cevap)
+        horde_sonuc = (dusunce, cevap)
 
     # AI Horde remains the default and is also used until a selected Routeway key is present.
     else:
@@ -701,8 +735,11 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
                     )
                     # Önce düşünce bloklarını temizle; yalnızca kullanıcıya gidecek
                     # aday yanıt üzerinde kalite kontrolü yap.
-                    ham = dusunce_bloklarini_sil(ham)
-                    aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
+                    dusunce_adayi, cevap_adayi = kurgusal_icsesi_ayristir(ham, karakter_key)
+                    dusunce_adayi = horde_cevabini_temizle(dusunce_adayi, karakter_key)
+                    if horde_bozuk_mu(dusunce_adayi):
+                        dusunce_adayi = ""
+                    aday = horde_cevabini_temizle(cevap_adayi, karakter_key).strip()
                     sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
                     if not aday and deneme == 0:
                         logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
@@ -713,7 +750,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
                 temiz = aday
                 if not temiz:
                     raise RuntimeError("Horde boş cevap döndürdü")
-                horde_sonuc = ("", temiz)
+                horde_sonuc = (dusunce_adayi, temiz)
                 _horde_hata_sayisi = 0
                 logging.info("LLM yanıtı AI Horde üzerinden alındı.")
             except Exception as e:
@@ -734,6 +771,6 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     if TURKCE_DUZELT and LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
         cevap = await turkce_duzelt(cevap)
     cevap = emoji_dogal_uygula(cevap, karakter_key)
-    return "", cevap  # iç ses kaldırıldı: model yazsa bile kullanıcıya gösterilmez
+    return dusunce, cevap  # yalnızca ayrı etiketli kurgusal iç ses gösterilir
 
 EMOJI_STILI["dondu"] = "Emojileri çok az kullan, sadece 🌙 🐺 🔥 gibi."
