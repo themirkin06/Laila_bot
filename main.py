@@ -116,13 +116,10 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("gunluk", {})
     d.setdefault("karakter_sirlari", {})
     d.setdefault("dunya", {})
+    d.setdefault("yan_karakterler", {})
     d.setdefault("son_olaylar", {})
     d.setdefault("proaktif_gun", "")
     d.setdefault("proaktif_sayi", 0)
-    # Eski dinamik yan karakter kayıtlarını temizle; ana karakter hafızaları korunur.
-    for obsolete in ("yan_karakterler", "sahne_katilimcilari", "yan_karakter_hafizasi",
-                     "sosyal_olaylar", "son_yan_karakterler", "ortak_anilar", "scene_states"):
-        d.pop(obsolete, None)
     if "proaktif_esik" not in d:
         esik_belirle(d)
     return d
@@ -139,34 +136,6 @@ HAVUZ_ANAHTARI = "bot:havuz"
 YUZ_REFERANS_ANAHTARI = "bot:yuz_referanslari"
 YUZ_REFERANSLARI = {k: None for k in KARAKTERLER}
 FOTO_ALTYAZILARI = ["Al bakalım 🙂", "İşte buradayım 😊", "Şu an böyleyim işte 😅", "Beğendin mi? 🙈", "Hadi bakalım 📸"]
-
-
-
-
-
-
-async def yuz_referanslarini_kaydet():
-    if not DB_AKTIF:
-        return
-    try:
-        await asyncio.to_thread(
-            redis_komut, "SET", YUZ_REFERANS_ANAHTARI,
-            json.dumps(YUZ_REFERANSLARI, ensure_ascii=False),
-        )
-    except Exception as exc:
-        logging.error("Yüz referansları kalıcı kaydedilemedi: %s", exc)
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def havuz_yukle_sync() -> dict:
@@ -279,10 +248,6 @@ def foto_konusma_baglamini_olustur(hafiza: list, istek: str, sahne_notu: str = "
 
 async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
     """Cevabı ||| ile parçalara bölüp, aralarda 'yazıyor...' göstererek gönderir."""
-    cevap = (cevap or "").strip()
-    if not cevap:
-        logging.warning("Boş karakter yanıtı gönderim katmanına ulaştı; güvenli kısa yanıt kullanılıyor.")
-        cevap = "Bir an için ne diyeceğimi toparlayamadım. Bir daha söyler misin?"
     parcalar = [p.strip() for p in cevap.split("|||") if p.strip()][:3] or [cevap]
 
     for i, parca in enumerate(parcalar):
@@ -380,16 +345,16 @@ async def foto_gonder(
             telegram_file = await bot.get_file(reference_file_id)
             reference_bytes = bytes(await telegram_file.download_as_bytearray())
         except Exception as e:
-            logging.warning(f"{karakter['isim']} yüz referansı indirilemedi: {e}")
+            logging.warning(f"{KARAKTERLER[key]['isim']} yüz referansı indirilemedi: {e}")
 
     if not reference_bytes:
-        raise RuntimeError(f"{karakter['isim']} için yüz referansı veya karakter fotoğrafı bulunamadı.")
+        raise RuntimeError(f"{KARAKTERLER[key]['isim']} için yüz referansı veya karakter fotoğrafı bulunamadı.")
 
     foto_bytes = await foto_uret_bytes(
         karakter, random.randint(1, 999999), yakinlik=yakinlik,
         surpriz=surpriz, reference_image=reference_bytes, scene_prompt=scene_prompt,
     )
-    sent = await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
+    await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
 
 async def cevabi_ilet(bot, chat_id: int, dusunce: str, cevap: str, character_key: str = None, automatic_voice: bool = False):
     """Karakter yanıtını normal Telegram mesajı olarak gönderir."""
@@ -634,11 +599,6 @@ async def havuzsil_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Önce /start ile bir karakter seç.")
         return
     key = durum["karakter"]
-    if context.args:
-        key = context.args[0].strip()
-        if key not in KARAKTERLER:
-            await update.message.reply_text("Karakter bulunamadı. Ana karakter adını yaz.")
-            return
     FOTO_HAVUZU[key] = []
     await havuz_kaydet()
     await update.message.reply_text(f"{KARAKTERLER[key]['isim']} havuzu boşaltıldı.")
@@ -652,11 +612,9 @@ async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     durum = kullanici_durumu.get(update.effective_user.id)
 
     if ad.startswith("yuzref "):
-        ad_karakter = ad.split(maxsplit=1)[1].strip()
-        key = ad_karakter if ad_karakter in KARAKTERLER else None
-        karakter = KARAKTERLER.get(key) if key else None
-        if not karakter:
-            await update.message.reply_text("Karakteri tanıyamadım. Örnek: yuzref leyla gibi.")
+        key = ad.split(maxsplit=1)[1].strip()
+        if key not in KARAKTERLER:
+            await update.message.reply_text("Karakter kodunu tanıyamadım. Örnek: yuzref leyla, yuzref merve, yuzref ayse.")
             return
         uygun = [p for p in update.message.photo if max(p.width, p.height) <= 512]
         if not uygun:
@@ -675,7 +633,7 @@ async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("Referans bu oturumda kaydedildi ama kalıcı kayıtta hata oldu.")
                 return
         await update.message.reply_text(
-            f"✅ {karakter['isim']} için yüz referansı kaydedildi. Yeni üretilen fotoğraflarda bu yüzü temel alacağım."
+            f"✅ {KARAKTERLER[key]['isim']} için yüz referansı kaydedildi. Yeni üretilen fotoğraflarda bu yüzü temel alacağım."
         )
         return
 
@@ -741,12 +699,6 @@ async def hikaye_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎬 Şu anki sahne{' (senin seçtiğin)' if ozel else ''}:\n{sahne_metni(key, puan, ozel)}\n\n"
         "Sahneyi değiştirmek için: /sahne <yeni sahne>. Otomatiğe dönmek için: /sahne sifirla"
     )
-
-
-
-
-
-
 
 
 async def sahne_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -901,27 +853,25 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
     hafiza = hafiza_al(durum)
     karakter = KARAKTERLER[secilen_karakter]
 
-    # Açık fotoğraf isteğinde yalnızca seçili ana karakterin fotoğrafını gönder.
+    # Açık fotoğraf isteğinde sohbet modelini bekletmeden doğrudan fotoğraf gönder.
     if foto_istegi_mi(user_message):
-        scene_prompt = foto_konusma_baglamini_olustur(
-            hafiza, user_message,
-            durum.setdefault("sahne_hafizasi", {}).get(secilen_karakter, ""),
-        )
         durum["chat_id"] = chat_id
         durum["cevapsiz"] = 0
         durum["son_etkilesim"] = time.time()
         esik_belirle(durum)
         try:
-            caption = random.choice(FOTO_ALTYAZILARI) if EMOJI_KULLAN else emoji_temizle(random.choice(FOTO_ALTYAZILARI))
             await foto_gonder(
                 context.bot, chat_id, karakter,
-                caption=caption,
+                caption=(random.choice(FOTO_ALTYAZILARI) if EMOJI_KULLAN else emoji_temizle(random.choice(FOTO_ALTYAZILARI))),
                 yakinlik=yakinlik_seviyesi(yakinlik_puani(durum, secilen_karakter)),
                 havuzdan=False,
-                scene_prompt=scene_prompt,
+                scene_prompt=foto_konusma_baglamini_olustur(
+                    hafiza, user_message,
+                    durum.setdefault("sahne_hafizasi", {}).get(secilen_karakter, ""),
+                ),
             )
         except Exception as img_error:
-            logging.error("Görsel isteği hatası: %s", img_error)
+            logging.error(f"Görsel isteği hatası: {img_error}")
             await update.message.reply_text("Şu an fotoğrafı hazırlayamadım; biraz sonra tekrar deneyelim.")
         await durum_kaydet(user_id)
         return
@@ -1137,4 +1087,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

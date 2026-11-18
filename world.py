@@ -1,6 +1,7 @@
 """Laila yaşayan dünya modülü.
 
-Karakterlerin günlük rutinlerini, kişisel sırlarını ve son olay bağlamını yönetir.
+Karakterlerin gün içindeki rutinlerini ve kullanıcı durumunda saklanan
+mekân, yan karakter, sır ve son olay bağlamını yönetir.
 """
 import random
 from datetime import datetime
@@ -133,6 +134,13 @@ def dunya_olayi_ekle(durum: dict, karakter_key: str, olay: str, limit: int = 8) 
     del liste[:-max(1, int(limit))]
 
 
+def yan_karakter_kaydet(durum: dict, karakter_key: str, ad: str, detay: str) -> None:
+    """Bir karakterin dünyasına yan karakter bilgisi ekler veya günceller."""
+    alan = durum.setdefault("yan_karakterler", {})
+    karakterler = alan.setdefault(karakter_key, {})
+    karakterler[str(ad)] = str(detay)
+
+
 def karakter_sirri_kaydet(durum: dict, karakter_key: str, sir: str) -> None:
     """Karaktere ait henüz açığa çıkmamış bir sırrı kayıt altında tutar."""
     alan = durum.setdefault("karakter_sirlari", {})
@@ -161,6 +169,14 @@ def dunya_ozeti(durum: dict, karakter_key: str) -> str:
                     ekle(str(alan)[:50], deger)
         elif veri:
             ekle("Dünya", veri)
+
+    yanlar = durum.get("yan_karakterler", {}).get(karakter_key, {})
+    if isinstance(yanlar, dict):
+        for ad, detay in list(yanlar.items())[-8:]:
+            ekle(f"Yan karakter {str(ad)[:50]}", detay)
+    elif isinstance(yanlar, list):
+        for detay in yanlar[-8:]:
+            ekle("Yan karakter", detay)
 
     sirlar = durum.get("karakter_sirlari", {}).get(karakter_key, [])
     if isinstance(sirlar, list):

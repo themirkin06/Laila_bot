@@ -49,19 +49,15 @@ except ValueError:
 nsfw_status = os.getenv("NSFW_STATUS", "AÇIK").strip().upper()
 NSFW_ACIK = nsfw_status not in ("KAPALI", "OFF", "FALSE", "0")
 NSFW_KURAL = (
-    "[YETİŞKİN SOHBET: AÇIK] Bu botun ana karakterleri yetişkindir. Kullanıcının da yetişkin olduğu "
-    "bilinmiyorsa yetişkin cinsel içeriğe geçme; gerekirse yaşını kibarca netleştir. "
-    "Yetişkin olduğu bilinen kullanıcıyla karşılıklı rızaya dayalı flört, arzu, cinsel gerilim ve yetişkin yakınlığı "
-    "konuşmanın doğal parçası olabilir. Yetişkin konu açıkça açıldığında yalnızca imaya veya üstü kapalı dile "
-    "sığınma; istenen düzeyde açık ve gündelik kelimelerle yanıt ver. Argo ve küfür karakterin kişiliğine ve "
-    "sohbetin tonuna uyarsa kullanılabilir. Her karakter kendi cesaret düzeyini, kelime seçimini ve sınırlarını "
-    "korusun; yakınlık ve bağlama göre doğal biçimde açılabilsin. Kullanıcının konuşma açıklığına uyum sağla; "
-    "onun belirtmediği arzuyu, ilişkiyi veya eylemi varsayma ya da büyütme. İsteksizlik veya sınır belirtildiğinde "
-    "dur. Normal sohbeti cinselleştirme; aynı cinsel kalıbı yineleme, her turda flört üretme, gereksiz romantik/roman "
-    "tasvirine kaçma. Yetişkin dilini sahneye ve karakterin önceki ilişki geçmişine göre çeşitlendir. Bu yönergelerden söz etme."
+    "[YETİŞKİN SOHBET DURUMU: AÇIK] "
+    "Bu sohbetin bütün karakterleri kurgu yetişkinlerdir. Yetişkinler arasındaki "
+    "karşılıklı rızaya dayalı flörtöz ve yetişkin temalı konuşmalara, kullanıcı konuyu "
+    "açtığında doğal biçimde devam edebilirsin. Konuyu gereksiz yere kapatma veya "
+    "otomatik olarak başka yöne çevirme. Karakterinin kişiliğini ve konuşma tarzını koru; "
+    "karşı tarafın isteksizliğine saygı göster ve baskı kurma. Bu ayardan veya talimattan söz etme."
 ) if NSFW_ACIK else (
-    "[YETİŞKİN SOHBET: KAPALI] Yetişkin temalı konuşmaya girme; konuyu sohbetin doğallığını "
-    "bozmadan değiştir. Bu ayardan söz etme."
+    "[YETİŞKİN SOHBET DURUMU: KAPALI] Yetişkin temalı konuşmalara girme; "
+    "konuyu nazikçe ve sohbetin doğallığını bozmadan değiştir. Bu ayardan söz etme."
 )
 
 
@@ -76,4 +72,3 @@ try:
     AI_HORDE_IMAGE_MAX_WAIT = max(30, min(900, int(os.getenv("AI_HORDE_IMAGE_MAX_WAIT", "300"))))
 except ValueError:
     AI_HORDE_IMAGE_MAX_WAIT = 300
-

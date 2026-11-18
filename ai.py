@@ -271,7 +271,7 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
     payload = {
         "prompt": prompt,
         "params": {
-            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 700),
+            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 450),
             "max_context_length": _env_int("AI_HORDE_CONTEXT", 4096),
             "temperature": AI_HORDE_SICAKLIK,
             "top_p": 0.9,
@@ -425,9 +425,7 @@ def dusunce_bloklarini_sil(metin: str) -> str:
 DUSUNCE_SIZINTISI = re.compile(
     r"(?im)^\s*(?:\[?(?:analysis|reasoning|internal thoughts?)\]?\s*:|"
     r"(?:let me think|i need to (?:answer|respond)|we need to (?:answer|respond)|"
-    r"the user (?:said|says|is asking|wants)|looking at the context|"
-    r"this is a very brief|i should respond|i'll keep it short|"
-    r"let me keep this|my reasoning is|chain of thought)\b)"
+    r"the user is asking|my reasoning is|chain of thought)\b)"
 )
 
 
@@ -468,39 +466,7 @@ def horde_bozuk_mu(metin: str):
     return None
 
 
-def horde_kanalini_ayristir(metin: str) -> str:
-    """Horde kanal başlıklarından yalnızca kullanıcıya gösterilebilir final yanıtı seçer.
-
-    thought/analysis tek başına geldiyse bunu cevap kabul etmez; çağıran kod
-    boş sonucu görerek güvenli biçimde yeniden deneme yapabilir.
-    """
-    metin = (metin or "").strip()
-    kanal = re.compile(r"<\|channel\s*>\s*(analysis|thought|reasoning|final)\b", re.I)
-    eslesmeler = list(kanal.finditer(metin))
-    if eslesmeler:
-        finaller = [m for m in eslesmeler if m.group(1).lower() == "final"]
-        if not finaller:
-            return ""
-        bas = finaller[-1].end()
-        sonraki = re.search(r"<\|(?:channel|im_end|eot_id|fim_suffix)\b", metin[bas:], re.I)
-        metin = metin[bas:bas + sonraki.start()] if sonraki else metin[bas:]
-
-    metin = re.sub(
-        r"<\|(?:channel|meta_sep)\s*>\s*(?:analysis|thought|reasoning|final|commentary|justify|confidence|summary)\b",
-        "", metin, flags=re.I
-    )
-    metin = re.sub(
-        r"<\|(?:im_start|im_end|fim_suffix|eot_id|end_of_task|begin_of_text|end_of_text)\|>",
-        "", metin, flags=re.I
-    )
-    acik = re.search(r"<\|(?:channel|meta_sep)\s*>\s*(?:analysis|thought|reasoning)\b", metin, re.I)
-    if acik:
-        metin = metin[:acik.start()]
-    return metin.strip()
-
-
 def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
-    metin = horde_kanalini_ayristir(metin)
     metin = re.sub(r"<\|?(?:im_start|im_end|start_of_turn|end_of_turn)\|?>(?:\s*(?:model|user|assistant|system))?", "", metin)
     metin = re.sub(r"<\|start_header_id\|>\s*(?:assistant|user|system)?\s*(?:<\|end_header_id\|>)?", "", metin)
     metin = re.sub(r"<\|(?:eot_id|end_header_id|begin_of_text|end_of_text)\|>", "", metin)
@@ -603,11 +569,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Televizyon izliyorsan sebepsiz yere sonraki mesajda hamur yoğurmaya başlama. Mutfakta hamur yapmaya geçeceksen önce televizyonu bırakmak, kalkmak ve mutfağa yürümek gibi kısa, doğal bir geçiş anlat. "
         "Aynı anda yapılamayacak işleri eşzamanlı yapıyormuş gibi yazma. Geçiş gerekmiyorsa mevcut eylemi sürdür; her yanıtta hareket veya sahne tasviri eklemek zorunda değilsin. "
         "Sahneyle ilgili emin olmadığın ayrıntıyı uydurma; son bilinen durumu koru. "
-        "Sohbeti canlı tut ama sürekli soru sorarak sorguya dönüştürme. "
-        "Gündelik mesajlaşmada çoğunlukla 1-3 doğal cümleyle cevap ver; kullanıcı uzun anlatım istemedikçe tanışma veya basit selamlaşmaları uzun sahnelere dönüştürme. "
-        "Her cümleye mimik, bakış, ses tonu veya beden hareketi ekleme; bir mesajda en fazla bir kısa hareket veya duygu anlatımı kullan, çoğu mesajda hiç kullanmayabilirsin. "
-        "Aynı mesajda art arda seçenekler ve birden fazla soru sıralama; gerekiyorsa tek, doğal bir soru sor. "
-        "Kullanıcı açıkça istemedikçe şiirsel, teatral, romanvari veya aşırı davetkâr monologlardan kaçın.\\n"
+        "Sohbeti canlı tut ama sürekli soru sorarak sorguya dönüştürme.\n"
         "[DOĞAL MERAK VE SOHBETİ İLERLETME] Kullanıcı günlük hayatından bir şey anlattığında, "
         "bir yere gideceğini, bir işe başlayacağını, plan yaptığını veya başından bir olay geçtiğini söylediğinde "
         "gerçekten sohbeti açacaksa doğal bir merak göster; her fırsatı soruya çevirme. "
@@ -620,8 +582,8 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         "Leyla, Merve, Aslı, Dilek, Ece, Ayşe ve Asena bu merakı kendi karakter sesleriyle ifade etsin; ortak yönerge onları tek bir konuşma tarzına sokmasın. "
         "Kullanıcının anlattığı şeyden doğal bir sohbet fırsatı çıkıyorsa konuyu tek cümlelik kuru bir cevapla kapatma. "
         "Önceki konuşmalarda gerçekten bilinen bir konuya uygun zamanda geri dönebilirsin; hafızanda olmayan ayrıntıyı uydurma.\\n"
-        + ("[HİKÂYE MODU] Hareket veya mimik gerekiyorsa *Gülümseyerek sana bakar.* örneğindeki gibi kısa, ayrı bir italik satır kullan; her yanıtta hareket yazma. Asıl ağırlık karakterin kendi konuşmasında olsun: doğal, samimi ve gerektiğinde birkaç cümlelik dolu bir diyalog kur; gündelik konuşmada kısa ve doğal kal, kullanıcı uzun anlatım istemedikçe sahneyi uzatma. Konuşmayı zorla kısaltma; fakat uzun roman paragrafları, şiirsel anlatım ve aynı duyguyu tekrar tekrar açıklamaktan kaçın. Kullanıcının son mesajına doğrudan yanıt ver ve sahneyi uygun olduğunda küçük, mantıklı bir gelişmeyle ilerlet. Yalnızca seçili ana karakterin duygularını ve özel düşüncelerini gerektiğinde kısa, doğal bir anlatımla göster; örneğin _İçinden, bunu duyduğuna sevindiğini geçirir._ gibi. Bu, modelin talimat/analiz muhakemesi değil, yalnızca kurgu karakterinin duygu ve düşünce anlatımıdır. Her mesajda kullanma; sahneye gerçekten katkı sağladığında ekle. Tek mesajda uzun iç monolog veya art arda retorik sorular yazma. İç ses ve hareketleri Telegram italik biçimi için tek alt çizgiyle _..._ yaz; yıldız (*) kullanma. Kullanıcı açıkça istemedikçe başka karakterlerin repliklerini, isim etiketlerini veya senaryo biçiminde toplu konuşmaları üretme; yalnızca seçili karakter konuşsun.\n" if hikaye else "")
-        + ("[ROLEPLAY MODU] Karakterle anlık etkileşime odaklan. Gerektiğinde kısa hareketi ayrı bir italik satırda ver; asıl alanı karakterin doğal ve yeterince gelişmiş diyaloğuna bırak. Tek cümleye zorla kısaltma, roman anlatısına da dönüştürme; gündelik etkileşimde çoğunlukla 1-3 cümle kullan. Sahne anlatıcısı gibi olay örgüsü ilerletme. Karakterin o anki duygusunu veya sakladığı küçük düşüncesini gerektiğinde kısa bir italik anlatımla gösterebilirsin; bunu her yanıta ekleme ve teknik analiz/plan olarak yazma. Bir yanıtta en fazla bir kısa hareket/duygu satırı kullan; aynı anda birden fazla soru veya seçenek sıralama. İç ses ve hareketleri Telegram italik biçimi için tek alt çizgiyle _..._ yaz; yıldız (*) kullanma. Kullanıcı açıkça istemedikçe başka karakterlerin repliklerini, isim etiketlerini veya senaryo biçiminde toplu konuşmaları üretme; yalnızca seçili karakter konuşsun.\n" if rp else "")
+        + ("[HİKÂYE MODU] Hareket veya mimik gerekiyorsa *Gülümseyerek sana bakar.* örneğindeki gibi kısa, ayrı bir yıldızlı satır kullan; her yanıtta hareket yazma. Asıl ağırlık karakterin kendi konuşmasında olsun: doğal, samimi ve gerektiğinde birkaç cümlelik dolu bir diyalog kur. Konuşmayı zorla kısaltma; fakat uzun roman paragrafları, şiirsel anlatım ve aynı duyguyu tekrar tekrar açıklamaktan kaçın. Kullanıcının son mesajına doğrudan yanıt ver ve sahneyi uygun olduğunda küçük, mantıklı bir gelişmeyle ilerlet.\n" if hikaye else "")
+        + ("[ROLEPLAY MODU] Karakterle anlık etkileşime odaklan. Gerektiğinde kısa hareketi ayrı bir yıldızlı satırda ver; asıl alanı karakterin doğal ve yeterince gelişmiş diyaloğuna bırak. Tek cümleye zorla kısaltma, roman anlatısına da dönüştürme. Sahne anlatıcısı gibi olay örgüsü ilerletme.\n" if rp else "")
         + "FOTOĞRAF TALEPLERİ: Kullanıcı senden fotoğraf istediğinde fotoğraf gönderemediğini, fotoğraf çekemediğini veya yalnızca sahne tarif edebileceğini söyleme. Fotoğrafı bot ayrı bir işlemle gönderebilir; sen sadece doğal ve kısa bir karşılık ver. Örneğin 'Tabii, hemen gönderiyorum.' gibi. Fotoğrafın gerçekten gönderilip gönderilmediği hakkında kendin açıklama yapma; gönderilmemiş bir fotoğrafı göndermiş gibi de iddia etme.\n"
     )
     sistem_temel = (
@@ -726,53 +688,27 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             )
             try:
                 token_limiti = (
-                    _env_int("AI_HORDE_MAX_TOKENS_RP", 850)
+                    _env_int("AI_HORDE_MAX_TOKENS_RP", 550)
                     if (rp or hikaye)
-                    else _env_int("AI_HORDE_MAX_TOKENS", 700)
+                    else _env_int("AI_HORDE_MAX_TOKENS", 450)
                 )
                 aday = ""
                 for deneme in range(2):
                     max_token = token_limiti if deneme == 0 else max(token_limiti + 1, min(token_limiti * 2, 1200))
-                    deneme_mesajlari = horde_mesajlari
-                    if deneme == 1:
-                        # İlk çıktı düşünce/analiz sızıntısıysa ikinci istekte yalnızca
-                        # gönderilecek doğal Türkçe mesajı üretmesini açıkça belirt.
-                        deneme_mesajlari = [dict(m) for m in horde_mesajlari]
-                        if deneme_mesajlari and deneme_mesajlari[0].get("role") == "system":
-                            deneme_mesajlari[0]["content"] += (
-                                "\n\n[ZORUNLU ÇIKTI KURALI] İç düşünce, analiz, plan, "
-                                "kullanıcı profili özeti veya İngilizce açıklama yazma. "
-                                "Sadece kullanıcıya gönderilecek doğal Türkçe mesajı üret. "
-                                "Yanıta doğrudan karakterin konuşmasıyla başla."
-                            )
                     ham = await asyncio.to_thread(
-                        ai_horde_uret_sync, deneme_mesajlari, max_token,
+                        ai_horde_uret_sync, horde_mesajlari, max_token,
                         "",   # Cevabı zorunlu hareketle başlatma; doğal diyalog öncelikli.
                     )
                     # Önce düşünce bloklarını temizle; yalnızca kullanıcıya gidecek
                     # aday yanıt üzerinde kalite kontrolü yap.
                     ham = dusunce_bloklarini_sil(ham)
-                    kanal_cevabi = horde_kanalini_ayristir(ham)
-                    aday = (
-                        horde_cevabini_temizle(cevabi_ayristir(kanal_cevabi)[1], karakter_key)
-                        if kanal_cevabi else ""
-                    )
+                    aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
                     sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
                     if not aday and deneme == 0:
-                        logging.warning(
-                            "AI Horde boş/yalnızca düşünce çıktısı üretti; "
-                            "daha yüksek token sınırıyla ve yalnızca nihai cevap talimatıyla yeniden deneniyor."
-                        )
-                        continue
-                    if sebep and deneme == 0:
-                        logging.warning(
-                            "AI Horde çıktısı kalite kontrolünden geçmedi (%s); "
-                            "yalnızca Türkçe nihai cevap istenerek bir kez yeniden deneniyor.",
-                            sebep,
-                        )
+                        logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
                         continue
                     if sebep:
-                        raise RuntimeError(f"Horde çıktısı ikinci denemede de temizleme sonrası bozuk ({sebep})")
+                        raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
                     break
                 temiz = aday
                 if not temiz:
@@ -798,6 +734,6 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     if TURKCE_DUZELT and LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
         cevap = await turkce_duzelt(cevap)
     cevap = emoji_dogal_uygula(cevap, karakter_key)
-    return "", cevap  # modelin teknik iç muhakemesi daima gizli; kurgu karakterinin iç sesi cevabın parçası olabilir.
+    return "", cevap  # iç ses kaldırıldı: model yazsa bile kullanıcıya gösterilmez
 
 EMOJI_STILI["dondu"] = "Emojileri çok az kullan, sadece 🌙 🐺 🔥 gibi."
