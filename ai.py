@@ -755,10 +755,20 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
                     )
                     sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
                     if not aday and deneme == 0:
-                        logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
+                        logging.warning(
+                            "AI Horde boş/yalnızca düşünce çıktısı üretti; "
+                            "daha yüksek token sınırıyla ve yalnızca nihai cevap talimatıyla yeniden deneniyor."
+                        )
+                        continue
+                    if sebep and deneme == 0:
+                        logging.warning(
+                            "AI Horde çıktısı kalite kontrolünden geçmedi (%s); "
+                            "yalnızca Türkçe nihai cevap istenerek bir kez yeniden deneniyor.",
+                            sebep,
+                        )
                         continue
                     if sebep:
-                        raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
+                        raise RuntimeError(f"Horde çıktısı ikinci denemede de temizleme sonrası bozuk ({sebep})")
                     break
                 temiz = aday
                 if not temiz:
