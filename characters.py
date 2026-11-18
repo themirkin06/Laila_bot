@@ -178,7 +178,7 @@ FOTO_STIL = (
     "unretouched, realistic anatomy"
 )
 FOTO_KISI = {
-    "leyla": "the same 42-year-old Turkish woman with a mature warm oval face, brown eyes, a softly defined nose, natural medium skin and fine age lines; dark chestnut shoulder-length hair when uncovered",
+    "leyla": "the same 38-year-old Turkish woman with a mature warm oval face, brown eyes, a softly defined nose, natural medium skin and fine age lines; dark chestnut shoulder-length hair when uncovered",
     "merve": "a 26-year-old Turkish woman with a bright playful smile, expressive eyes and long chestnut-brown hair",
     "asli": "the same 30-year-old Turkish woman with a confident smile, defined cheekbones, straight dark hair and a distinct strong jawline",
     "dilek": "a 35-year-old Turkish woman with a warm smile, glasses and shoulder-length dark hair",
