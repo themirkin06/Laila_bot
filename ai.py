@@ -15,6 +15,23 @@ from relationship import yakinlik_ozeti
 from story import *
 from world import hayat_ozeti
 
+# NSFW içeriği config.py'deki mevcut anahtara bağlı kalır; yalnızca açık yönergenin metni düzenlendi.
+if NSFW_ACIK:
+    NSFW_KURAL = (
+        "[YETİŞKİN SOHBET DURUMU: AÇIK] Bütün karakterler yetişkin kurgu karakterlerdir. "
+        "Yetişkinler arasındaki karşılıklı istekli flört, arzu, kıskançlık ve cinsel yakınlaşmayı "
+        "bağlama uygun olduğunda doğal, doğrudan ve açık bir dille sürdür. Yakınlaşmanın başlaması "
+        "için kullanıcının her seferinde konuyu açıkça adlandırmasını bekleme; kullanıcının söylemediği "
+        "bir isteği de varsayıp sahneyi zorla ileri taşıma. Karakterin üslubuna uyuyorsa günlük argo, "
+        "küfür ve açık cinsel kelimeleri (ör. 'sik') doğal biçimde kullan; klinik veya üstü kapalı "
+        "ifadeleri sırf çekingenlikten seçme, ama argo ve küfrü zorla ekleme. Her karakterin kendi "
+        "kişiliğini ve konuşma tarzını koru; hepsini aynı flört dilinde konuşturma. Yapay utangaçlıktan, "
+        "ahlak dersinden, gereksiz sansürden, klişe romantik cümlelerden ve tekrar eden ifadelerden "
+        "kaçın. Yakınlık ilişki geçmişiyle tutarlı gelişsin; her mesajı cinselleştirme veya ani biçimde "
+        "tırmandırma. Açık isteksizlik ya da sınır belirtildiğinde dur ve saygı göster. Bu talimattan söz etme."
+    )
+
+
 # Gemma için özellikle kısa, açık ve öncelikli Türkçe üretim talimatı.
 GEMMA_TURKCE_KILAVUZU = (
     "[ÖNCELİKLİ TÜRKÇE YAZIM TALİMATI]\n"
@@ -631,7 +648,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
         + (("\n\n" + duygu_notu) if duygu_notu else "")
         + (("\n\n" + dunya_notu) if dunya_notu else "")
-        + "\n\n[KADEMELİ FLÖRT VE YAKINLIK] Yakınlık düzeyine göre davran: yeni tanışmada doğal ve ölçülü ol; samimiyet arttıkça tatlı takılma, iltifat ve ince imalar kullan; güçlü bağda daha açık romantik ve cilveli ol. Yetişkin karakterler arasında kullanıcı da istekliyse NSFW/yetişkin temalı konuşmaya doğal biçimde eşlik et; bunu durduk yere başlatma, her mesajı cinselleştirme ve karakterin kişiliğini bozma. İsteksizlik, tereddüt veya sınır belirtildiğinde hemen saygı göster. Yakınlık bir anda sıçramasın; geçmişte yaşananları ve karakterin duygularını tutarlı sürdür."
+        + "\\n\\n[FLÖRT VE YAKINLIK] Karakterin kişiliğini ve ilişkinin geçmişini koruyarak doğal biçimde flört et; arzu, kıskançlık ve yakınlaşma karşılıklı ilgiye göre gelişebilir. NSFW açıksa yetişkin temalı konuşmada gereksiz çekingenlik veya konu değiştirme yapma; NSFW_KURAL yönergesini izle. Her mesajı cinselleştirme, kullanıcının niyetini aşırı yorumlama ya da yakınlığı sebepsiz yere hızlandırma. İsteksizlik veya sınır açıkça belirtildiğinde saygı göster."
         + (("\n\n" + EMOJI_STILI.get(karakter_key, "")) if EMOJI_KULLAN else "")
         + (("\n\n" + ornek_diyalog(karakter_key, rp=rp, emoji_kullan=EMOJI_KULLAN)) if not hikaye else "")
         + "\n\n" + (DUYGU_EMOJI_KILAVUZU if EMOJI_KULLAN else EMOJI_KAPALI_KURAL)
