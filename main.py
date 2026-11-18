@@ -517,13 +517,6 @@ async def yakinlik_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- Fotoğraf havuzu komutları ---
-class YuzReferansiBulunamadiError(RuntimeError):
-    """The selected character has no registered reference or pool image."""
-
-
-class YuzReferansiIndirilemediError(RuntimeError):
-    """A registered Telegram image could not be retrieved for generation."""
-
 
 async def aday_gonder(bot, chat_id: int, key: str):
     """Aday fotoğraf üretir, altına Havuza ekle / At butonları koyar."""
@@ -536,12 +529,6 @@ async def aday_gonder(bot, chat_id: int, key: str):
         adaylar.append(("yüz referansı", yuz_ref_id))
     if havuz_ref_id and havuz_ref_id != yuz_ref_id:
         adaylar.append(("karakter fotoğrafı havuzu", havuz_ref_id))
-    if not adaylar:
-        raise YuzReferansiBulunamadiError(
-            f"{karakter['isim']} için başlangıç fotoğrafı yok. "
-            f"Bir fotoğrafı ‘yuzref {key}’ altyazısıyla gönder."
-        )
-
     ref_bytes = None
     for kaynak, file_id in adaylar:
         try:
@@ -557,12 +544,6 @@ async def aday_gonder(bot, chat_id: int, key: str):
                 break
         except Exception as e:
             logging.warning("Aday fotoğraf için %s indirilemedi (%s): %s", kaynak, key, e)
-    if not ref_bytes:
-        raise YuzReferansiIndirilemediError(
-            f"{karakter['isim']} için kayıtlı fotoğraf Telegram'dan indirilemedi. "
-            f"Referansı yenilemek için fotoğrafı ‘yuzref {key}’ altyazısıyla yeniden gönder."
-        )
-
     foto = await foto_uret_bytes(karakter, random.randint(1, 999999), reference_image=ref_bytes)
     klavye = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Havuza ekle", callback_data=f"havuz_ekle_{key}"),
@@ -582,11 +563,6 @@ async def uret_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"{KARAKTERLER[key]['isim']} için aday fotoğraf üretiliyor...")
     try:
         await aday_gonder(context.bot, update.effective_chat.id, key)
-    except YuzReferansiBulunamadiError as e:
-        await update.message.reply_text(str(e))
-    except YuzReferansiIndirilemediError as e:
-        logging.error(f"Aday fotoğraf hatası: {e}")
-        await update.message.reply_text(str(e))
     except Exception as e:
         logging.error(f"Aday fotoğraf hatası: {e}")
         await update.message.reply_text("Fotoğraf üretilemedi, biraz sonra tekrar dene.")
