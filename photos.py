@@ -165,12 +165,16 @@ def _denoising_strength(scene_prompt: str) -> float:
 
 
 def cloudflare_img2img_sync(
-    prompt: str, seed: int, reference_image: bytes, full_length: bool = False,
+    prompt: str, seed: int, reference_image: bytes = None, full_length: bool = False,
 ) -> bytes:
-    """Generate or edit an image with Cloudflare Workers AI using a face reference."""
+    """Generate from the character prompt, optionally using a face reference."""
     if not CF_AKTIF:
         raise RuntimeError("Cloudflare fotoğraf üretimi için hesap kimliği ve API tokenı gerekli.")
-    reference, width, height = _source_to_webp(reference_image, full_length=full_length)
+    if reference_image:
+        ref_webp, width, height = _source_to_webp(reference_image, full_length=full_length)
+    else:
+        ref_webp = None
+        width, height = (768, 1024) if full_length else (768, 768)
 
     boundary = "----LailaWorkersAI" + secrets.token_hex(12)
     chunks = []
@@ -186,12 +190,13 @@ def cloudflare_img2img_sync(
     field("width", str(width))
     field("height", str(height))
     field("seed", str(seed))
-    chunks.extend((
-        f"--{boundary}\r\n".encode(),
-        b'Content-Disposition: form-data; name="input_image_0"; filename="reference.webp"\r\n',
-        b"Content-Type: image/webp\r\n\r\n", reference, b"\r\n",
-        f"--{boundary}--\r\n".encode(),
-    ))
+    if ref_webp:
+        chunks.extend((
+            f"--{boundary}\r\n".encode(),
+            b'Content-Disposition: form-data; name="input_image_0"; filename="reference.webp"\r\n',
+            b"Content-Type: image/webp\r\n\r\n", ref_webp, b"\r\n",
+        ))
+    chunks.append(f"--{boundary}--\r\n".encode())
     body = b"".join(chunks)
     url = (
         f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}"
@@ -238,7 +243,7 @@ async def foto_uret_bytes(
     karakter: dict, seed: int, yakinlik: int = 0, surpriz: bool = False,
     reference_image: bytes = None, scene_prompt: str = "",
 ) -> bytes:
-    """Use the character prompt for text-to-image, and preserve identity when a reference exists."""
+    """Generate via Cloudflare first, using the character prompt with an optional identity reference."""
     prompt = foto_promptu(
         karakter, yakinlik=yakinlik, surpriz=surpriz, scene_prompt=scene_prompt
     )
@@ -251,21 +256,22 @@ async def foto_uret_bytes(
             "Do not beautify into a different person or make her look younger. "
             + prompt
         )
-        if CF_AKTIF:
-            try:
-                image = await asyncio.to_thread(
-                    cloudflare_img2img_sync, prompt, seed, reference_image, full_length
-                )
-                logging.info("Fotoğraf Cloudflare Workers AI üzerinden üretildi.")
-                return image
-            except Exception as exc:
-                logging.warning("Cloudflare fotoğraf üretimi başarısız; AI Horde deneniyor: %s", exc)
-        logging.info(
-            "AI Horde img2img framing=%s denoising_strength=%.2f",
-            "full-length" if full_length else "standard", denoising_strength,
-        )
-    else:
-        logging.info("Yüz referansı yok; karakter promptuyla AI Horde text-to-image kullanılacak.")
+
+    if CF_AKTIF:
+        try:
+            image = await asyncio.to_thread(
+                cloudflare_img2img_sync, prompt, seed, reference_image, full_length
+            )
+            logging.info("Fotoğraf Cloudflare Workers AI üzerinden üretildi.")
+            return image
+        except Exception as exc:
+            logging.warning("Cloudflare fotoğraf üretimi başarısız; AI Horde deneniyor: %s", exc)
+
+    logging.info(
+        "AI Horde %s framing=%s denoising_strength=%.2f",
+        "img2img" if reference_image else "text-to-image",
+        "full-length" if full_length else "standard", denoising_strength,
+    )
     return await asyncio.to_thread(
         ai_horde_img2img_sync, prompt, seed, reference_image, denoising_strength, full_length
     )
