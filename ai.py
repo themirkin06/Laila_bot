@@ -425,7 +425,9 @@ def dusunce_bloklarini_sil(metin: str) -> str:
 DUSUNCE_SIZINTISI = re.compile(
     r"(?im)^\s*(?:\[?(?:analysis|reasoning|internal thoughts?)\]?\s*:|"
     r"(?:let me think|i need to (?:answer|respond)|we need to (?:answer|respond)|"
-    r"the user is asking|my reasoning is|chain of thought)\b)"
+    r"the user (?:said|says|is asking|wants)|looking at the context|"
+    r"this is a very brief|i should respond|i'll keep it short|"
+    r"let me keep this|my reasoning is|chain of thought)\b)"
 )
 
 
@@ -467,20 +469,22 @@ def horde_bozuk_mu(metin: str):
 
 
 def horde_kanalini_ayristir(metin: str) -> str:
-    """Horde kanal başlıklarından kullanıcıya gösterilecek metni seçer."""
+    """Horde kanal başlıklarından yalnızca kullanıcıya gösterilebilir final yanıtı seçer.
+
+    thought/analysis tek başına geldiyse bunu cevap kabul etmez; çağıran kod
+    boş sonucu görerek güvenli biçimde yeniden deneme yapabilir.
+    """
     metin = (metin or "").strip()
     kanal = re.compile(r"<\|channel\s*>\s*(analysis|thought|reasoning|final)\b", re.I)
     eslesmeler = list(kanal.finditer(metin))
     if eslesmeler:
         finaller = [m for m in eslesmeler if m.group(1).lower() == "final"]
-        if finaller:
-            bas = finaller[-1].end()
-            sonraki = re.search(r"<\|(?:channel|im_end|eot_id)\b", metin[bas:], re.I)
-            metin = metin[bas:bas + sonraki.start()] if sonraki else metin[bas:]
-        else:
-            # Bazı worker'lar doğal yanıtı da thought etiketiyle gönderiyor.
-            # Final bölümü yoksa diyaloğu kaybetmemek için yalnızca başlığı kaldır.
-            metin = metin[eslesmeler[0].end():]
+        if not finaller:
+            return ""
+        bas = finaller[-1].end()
+        sonraki = re.search(r"<\|(?:channel|im_end|eot_id|fim_suffix)\b", metin[bas:], re.I)
+        metin = metin[bas:bas + sonraki.start()] if sonraki else metin[bas:]
+
     metin = re.sub(
         r"<\|(?:channel|meta_sep)\s*>\s*(?:analysis|thought|reasoning|final|commentary|justify|confidence|summary)\b",
         "", metin, flags=re.I
@@ -489,6 +493,9 @@ def horde_kanalini_ayristir(metin: str) -> str:
         r"<\|(?:im_start|im_end|fim_suffix|eot_id|end_of_task|begin_of_text|end_of_text)\|>",
         "", metin, flags=re.I
     )
+    acik = re.search(r"<\|(?:channel|meta_sep)\s*>\s*(?:analysis|thought|reasoning)\b", metin, re.I)
+    if acik:
+        metin = metin[:acik.start()]
     return metin.strip()
 
 
@@ -722,14 +729,30 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
                 aday = ""
                 for deneme in range(2):
                     max_token = token_limiti if deneme == 0 else max(token_limiti + 1, min(token_limiti * 2, 1200))
+                    deneme_mesajlari = horde_mesajlari
+                    if deneme == 1:
+                        # İlk çıktı düşünce/analiz sızıntısıysa ikinci istekte yalnızca
+                        # gönderilecek doğal Türkçe mesajı üretmesini açıkça belirt.
+                        deneme_mesajlari = [dict(m) for m in horde_mesajlari]
+                        if deneme_mesajlari and deneme_mesajlari[0].get("role") == "system":
+                            deneme_mesajlari[0]["content"] += (
+                                "\n\n[ZORUNLU ÇIKTI KURALI] İç düşünce, analiz, plan, "
+                                "kullanıcı profili özeti veya İngilizce açıklama yazma. "
+                                "Sadece kullanıcıya gönderilecek doğal Türkçe mesajı üret. "
+                                "Yanıta doğrudan karakterin konuşmasıyla başla."
+                            )
                     ham = await asyncio.to_thread(
-                        ai_horde_uret_sync, horde_mesajlari, max_token,
+                        ai_horde_uret_sync, deneme_mesajlari, max_token,
                         "",   # Cevabı zorunlu hareketle başlatma; doğal diyalog öncelikli.
                     )
                     # Önce düşünce bloklarını temizle; yalnızca kullanıcıya gidecek
                     # aday yanıt üzerinde kalite kontrolü yap.
                     ham = dusunce_bloklarini_sil(ham)
-                    aday = horde_cevabini_temizle(cevabi_ayristir(ham)[1], karakter_key)
+                    kanal_cevabi = horde_kanalini_ayristir(ham)
+                    aday = (
+                        horde_cevabini_temizle(cevabi_ayristir(kanal_cevabi)[1], karakter_key)
+                        if kanal_cevabi else ""
+                    )
                     sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
                     if not aday and deneme == 0:
                         logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
