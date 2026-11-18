@@ -98,33 +98,41 @@ def _download_image(url: str) -> bytes:
 
 
 def ai_horde_img2img_sync(
-    prompt: str, seed: int, reference_image: bytes,
+    prompt: str, seed: int, reference_image: bytes = None,
     denoising_strength: float = IMAGE_DENOISING_STRENGTH, full_length: bool = False,
 ) -> bytes:
-    """Submit img2img to the selected model, wait for completion, and fetch the image."""
-    if AI_HORDE_IMAGE_API_KEY == "0000000000":
+    """Use img2img when a face reference exists; otherwise generate from the character prompt."""
+    if reference_image and AI_HORDE_IMAGE_API_KEY == "0000000000":
         raise RuntimeError(
             "Yüz referansları anonim AI Horde isteklerinde herkese açık veri kümesiyle paylaşılabilir. "
             "Önce kayıtlı bir AI Horde anahtarını AI_HORDE_IMAGE_API_KEY olarak ayarla."
         )
-    source_webp, width, height = _source_to_webp(reference_image, full_length=full_length)
+    if reference_image:
+        source_webp, width, height = _source_to_webp(reference_image, full_length=full_length)
+    else:
+        width, height = (768, 1024) if full_length else (768, 768)
+        source_webp = None
+
+    params = {
+        "steps": IMAGE_STEPS,
+        "cfg_scale": IMAGE_CFG_SCALE,
+        "width": width,
+        "height": height,
+        "seed": str(seed),
+    }
     payload = {
         "prompt": prompt,
-        "params": {
-            "steps": IMAGE_STEPS,
-            "cfg_scale": IMAGE_CFG_SCALE,
-            "denoising_strength": denoising_strength,
-            "width": width,
-            "height": height,
-            "seed": str(seed),
-        },
+        "params": params,
         "models": [AI_HORDE_IMAGE_MODEL],
-        "source_image": base64.b64encode(source_webp).decode("ascii"),
-        "source_processing": "img2img",
         "nsfw": True,
         "trusted_workers": True,
         "shared": False,
     }
+    if reference_image:
+        params["denoising_strength"] = denoising_strength
+        payload["source_image"] = base64.b64encode(source_webp).decode("ascii")
+        payload["source_processing"] = "img2img"
+
     submitted = _request_json(f"{AI_HORDE_URL}/generate/async", method="POST", payload=payload)
     request_id = submitted.get("id")
     if not request_id:
@@ -230,33 +238,34 @@ async def foto_uret_bytes(
     karakter: dict, seed: int, yakinlik: int = 0, surpriz: bool = False,
     reference_image: bytes = None, scene_prompt: str = "",
 ) -> bytes:
-    """Generate a character-consistent img2img photo; failures are returned to the caller."""
-    if not reference_image:
-        raise RuntimeError("Bu karakter için yüz referansı kayıtlı değil. Önce karaktere ait bir fotoğraf yükle.")
+    """Use the character prompt for text-to-image, and preserve identity when a reference exists."""
     prompt = foto_promptu(
         karakter, yakinlik=yakinlik, surpriz=surpriz, scene_prompt=scene_prompt
     )
     full_length = tam_boy_istendi_mi(scene_prompt)
     denoising_strength = _denoising_strength(scene_prompt)
-    prompt = (
-        "Preserve exactly the same adult woman's recognizable facial identity from the input image: "
-        "same age and apparent age, face shape, eye shape and color, nose, skin tone, and distinguishing features. "
-        "Do not beautify into a different person or make her look younger. "
-        + prompt
-    )
-    if CF_AKTIF:
-        try:
-            image = await asyncio.to_thread(
-                cloudflare_img2img_sync, prompt, seed, reference_image, full_length
-            )
-            logging.info("Fotoğraf Cloudflare Workers AI üzerinden üretildi.")
-            return image
-        except Exception as exc:
-            logging.warning("Cloudflare fotoğraf üretimi başarısız; AI Horde deneniyor: %s", exc)
-    logging.info(
-        "AI Horde img2img framing=%s denoising_strength=%.2f",
-        "full-length" if full_length else "standard", denoising_strength,
-    )
+    if reference_image:
+        prompt = (
+            "Preserve exactly the same adult woman's recognizable facial identity from the input image: "
+            "same age and apparent age, face shape, eye shape and color, nose, skin tone, and distinguishing features. "
+            "Do not beautify into a different person or make her look younger. "
+            + prompt
+        )
+        if CF_AKTIF:
+            try:
+                image = await asyncio.to_thread(
+                    cloudflare_img2img_sync, prompt, seed, reference_image, full_length
+                )
+                logging.info("Fotoğraf Cloudflare Workers AI üzerinden üretildi.")
+                return image
+            except Exception as exc:
+                logging.warning("Cloudflare fotoğraf üretimi başarısız; AI Horde deneniyor: %s", exc)
+        logging.info(
+            "AI Horde img2img framing=%s denoising_strength=%.2f",
+            "full-length" if full_length else "standard", denoising_strength,
+        )
+    else:
+        logging.info("Yüz referansı yok; karakter promptuyla AI Horde text-to-image kullanılacak.")
     return await asyncio.to_thread(
         ai_horde_img2img_sync, prompt, seed, reference_image, denoising_strength, full_length
     )
