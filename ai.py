@@ -238,8 +238,6 @@ AI_HORDE_KALITE_KONTROL = os.getenv("AI_HORDE_KALITE_KONTROL", "1") != "0"  # bo
 # Pollinations is deliberately not used as a chat provider or fallback.
 # Cloudflare, Python'un varsayılan User-Agent'ını (Python-urllib) engelliyor (hata 1010). Kendi User-Agent'ımızı gönderiyoruz.
 AI_HORDE_USER_AGENT = os.getenv("AI_HORDE_USER_AGENT", "Mozilla/5.0 (compatible; LailaTelegramBot/1.0)").strip()
-_horde_hata_sayisi = 0
-_horde_devre_disi_bitis = 0.0
 
 
 def routeway_uret_sync(messages: list) -> str:
@@ -600,7 +598,6 @@ def horde_gecmisi_hazirla(gecmis: list) -> list:
 
 async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekstra_sistem: str = "", puan: float = 0, stil: str = "hikaye", sahne=None, duygu_notu: str = "", dunya_notu: str = ""):
     """Generate a reply with the selected provider and return (thought, answer)."""
-    global _horde_hata_sayisi, _horde_devre_disi_bitis
     hikaye = (stil == "hikaye")
     rp = (stil == "roleplay")
     # Hikâye modunda karakterin "günlük hayatı" yerine paylaşılan sahne kullanılır.
@@ -722,7 +719,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
 
     horde_sonuc = None
 
-    # 1) AI Horde. Üst üste iki kez başarısız olursa 15 dakika denenmez (her mesaja bekleme eklemesin).
+    # 1) AI Horde. Başarısız isteklerden sonra sonraki mesajda yeniden denenir.
     if LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
         # Routeway is opt-in and isolated: errors are surfaced, never sent to Horde or Pollinations.
         ham = await llm_uret(messages)
@@ -736,7 +733,7 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     else:
         if LLM_PROVIDER == "routeway" and not ROUTEWAY_API_KEY:
             logging.info("ROUTEWAY_API_KEY boş; AI Horde kullanılmaya devam ediliyor.")
-        if AI_HORDE_ACIK and time.time() >= _horde_devre_disi_bitis:
+        if AI_HORDE_ACIK:
             horde_mesajlari = (
                 [{"role": "system", "content": sistem_horde}]
                 + horde_butceye_sigdir(
@@ -777,16 +774,10 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
                 if not temiz:
                     raise RuntimeError("Horde boş cevap döndürdü")
                 horde_sonuc = (dusunce_adayi, temiz)
-                _horde_hata_sayisi = 0
                 logging.info("LLM yanıtı AI Horde üzerinden alındı.")
             except Exception as e:
                 horde_sonuc = None
-                _horde_hata_sayisi += 1
                 logging.warning(f"AI Horde kullanılamadı: {e}")
-                if _horde_hata_sayisi >= 2:
-                    _horde_devre_disi_bitis = time.time() + 15 * 60
-                    _horde_hata_sayisi = 0
-                    logging.warning("AI Horde 15 dakika devre dışı bırakıldı.")
 
     # No automatic provider fallback. In particular, Pollinations is disabled for chat.
     if horde_sonuc is not None:
