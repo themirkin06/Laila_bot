@@ -33,8 +33,6 @@ from proactive import proaktif_dongu
 from story import *
 from ai import *
 from voice import send_voice, MAX_TEXT_LENGTH
-from social_world import *
-from scene_memory import scene_state_context, update_scene_state
 
 
 
@@ -112,22 +110,19 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("stil", "hikaye")
     d.setdefault("sahneler", {})
     d.setdefault("sahne_hafizasi", {})  # karakter bazında kalıcı son sahne notu
-    d.setdefault("scene_states", {})  # explicit location and cast continuity, stored with the user in Redis
     # Yeni ilişki ve dünya alanları: eski Redis kayıtlarına zarar vermeden eklenir.
     d.setdefault("iliski", {})
     d.setdefault("duygular", {})
     d.setdefault("gunluk", {})
     d.setdefault("karakter_sirlari", {})
     d.setdefault("dunya", {})
-    d.setdefault("yan_karakterler", {})
     d.setdefault("son_olaylar", {})
-    d.setdefault("sahne_katilimcilari", [])
-    d.setdefault("yan_karakter_hafizasi", {})
-    d.setdefault("sosyal_olaylar", [])
-    d.setdefault("son_yan_karakterler", [])
-    d.setdefault("ortak_anilar", [])
     d.setdefault("proaktif_gun", "")
     d.setdefault("proaktif_sayi", 0)
+    # Eski dinamik yan karakter kayıtlarını temizle; ana karakter hafızaları korunur.
+    for obsolete in ("yan_karakterler", "sahne_katilimcilari", "yan_karakter_hafizasi",
+                     "sosyal_olaylar", "son_yan_karakterler", "ortak_anilar", "scene_states"):
+        d.pop(obsolete, None)
     if "proaktif_esik" not in d:
         esik_belirle(d)
     return d
@@ -143,28 +138,11 @@ son_havuz_foto = {}
 HAVUZ_ANAHTARI = "bot:havuz"
 YUZ_REFERANS_ANAHTARI = "bot:yuz_referanslari"
 YUZ_REFERANSLARI = {k: None for k in KARAKTERLER}
-SOSYAL_DUNYA = empty_world()
 FOTO_ALTYAZILARI = ["Al bakalım 🙂", "İşte buradayım 😊", "Şu an böyleyim işte 😅", "Beğendin mi? 🙈", "Hadi bakalım 📸"]
 
 
-def sosyal_dunya_yukle_sync() -> dict:
-    """Load the dynamic NPC registry from its own Redis key, defaulting to an empty world."""
-    veri = redis_komut("GET", WORLD_REDIS_KEY)
-    if not veri:
-        world = empty_world()
-        redis_komut("SET", WORLD_REDIS_KEY, json.dumps(world, ensure_ascii=False))
-        return world
-    return normalize_world(json.loads(veri))
 
 
-async def sosyal_dunya_kaydet():
-    if not DB_AKTIF:
-        return
-    try:
-        veri = json.dumps(normalize_world(SOSYAL_DUNYA), ensure_ascii=False)
-        await asyncio.to_thread(redis_komut, "SET", WORLD_REDIS_KEY, veri)
-    except Exception as exc:
-        logging.error("Sosyal dünya kaydedilemedi; RAM ile devam ediliyor: %s", exc)
 
 
 async def yuz_referanslarini_kaydet():
@@ -179,68 +157,16 @@ async def yuz_referanslarini_kaydet():
         logging.error("Yüz referansları kalıcı kaydedilemedi: %s", exc)
 
 
-def _sosyal_karakter(key: str) -> dict | None:
-    return KARAKTERLER.get(key) or SOSYAL_DUNYA.get("characters", {}).get(key)
 
 
-def _known_person_names() -> list[str]:
-    names = [character.get("isim", "") for character in KARAKTERLER.values()]
-    names.extend(character.get("isim", "") for character in SOSYAL_DUNYA.get("characters", {}).values())
-    return [name for name in names if name]
 
 
-def _foto_slotu_ekle(key: str):
-    FOTO_HAVUZU.setdefault(key, [])
-    YUZ_REFERANSLARI.setdefault(key, None)
 
 
-async def _sosyal_kisileri_bul_ve_kaydet(text: str, state: dict, anchor_key: str) -> list[str]:
-    before = json.dumps(normalize_world(SOSYAL_DUNYA), ensure_ascii=False, sort_keys=True)
-    anchor = KARAKTERLER.get(anchor_key, {}).get("isim", anchor_key)
-    discover_from_text(SOSYAL_DUNYA, text, anchor_key, anchor, KARAKTERLER)
-    after = set(SOSYAL_DUNYA.get("characters", {}))
-    for key in after:
-        _foto_slotu_ekle(key)
-    mentioned = mentioned_character_keys(text, SOSYAL_DUNYA, KARAKTERLER)
-    side_mentions = [key for key in mentioned if key in after]
-    if side_mentions:
-        prior = state.setdefault("son_yan_karakterler", [])
-        state["son_yan_karakterler"] = list(dict.fromkeys(prior + side_mentions))[-12:]
-    after_serialized = json.dumps(normalize_world(SOSYAL_DUNYA), ensure_ascii=False, sort_keys=True)
-    if after_serialized != before:
-        await sosyal_dunya_kaydet()
-    before_keys = set(json.loads(before).get("characters", {}))
-    return sorted(after - before_keys)
 
 
-async def _referans_gorselini_indir(bot, key: str) -> bytes | None:
-    _foto_slotu_ekle(key)
-    file_id = YUZ_REFERANSLARI.get(key) or (FOTO_HAVUZU.get(key) or [None])[0]
-    if not file_id:
-        return None
-    telegram_file = await bot.get_file(file_id)
-    return bytes(await telegram_file.download_as_bytearray())
 
 
-async def _update_sosyal_sahne(text: str, state: dict, anchor_key: str) -> tuple[list[str], list[str]]:
-    before_world = json.dumps(normalize_world(SOSYAL_DUNYA), ensure_ascii=False, sort_keys=True)
-    joined, departed = update_scene_cast(state, text, SOSYAL_DUNYA, KARAKTERLER, anchor_key)
-    for key in SOSYAL_DUNYA.get("characters", {}):
-        _foto_slotu_ekle(key)
-    if joined:
-        names = [SOSYAL_DUNYA["characters"][key]["isim"] for key in joined]
-        append_world_event(state, [anchor_key, *joined], f"{', '.join(names)} sahneye katıldı.", "arrival")
-    if departed:
-        names = [SOSYAL_DUNYA["characters"][key]["isim"] for key in departed]
-        append_world_event(state, [anchor_key, *departed], f"{', '.join(names)} sahneden ayrıldı; hafıza ve ilişkileri korundu.", "departure")
-    update_scene_state(
-        state, anchor_key, "",
-        [SOSYAL_DUNYA["characters"][key]["isim"] for key in state.get("sahne_katilimcilari", []) if key in SOSYAL_DUNYA.get("characters", {})],
-    )
-    after_serialized = json.dumps(normalize_world(SOSYAL_DUNYA), ensure_ascii=False, sort_keys=True)
-    if after_serialized != before_world:
-        await sosyal_dunya_kaydet()
-    return joined, departed
 
 
 def havuz_yukle_sync() -> dict:
@@ -464,14 +390,6 @@ async def foto_gonder(
         surpriz=surpriz, reference_image=reference_bytes, scene_prompt=scene_prompt,
     )
     sent = await bot.send_photo(chat_id=chat_id, photo=foto_bytes, caption=caption)
-    if key in SOSYAL_DUNYA.get("characters", {}) and getattr(sent, "photo", None):
-        file_id = sent.photo[-1].file_id
-        if file_id not in FOTO_HAVUZU[key]:
-            FOTO_HAVUZU[key].append(file_id)
-            await havuz_kaydet()
-        if not YUZ_REFERANSLARI.get(key):
-            YUZ_REFERANSLARI[key] = file_id
-            await yuz_referanslarini_kaydet()
 
 async def cevabi_ilet(bot, chat_id: int, dusunce: str, cevap: str, character_key: str = None, automatic_voice: bool = False):
     """Karakter yanıtını normal Telegram mesajı olarak gönderir."""
@@ -704,8 +622,6 @@ async def havuz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     satirlar = ["📸 Fotoğraf havuzu\n"]
     for key, k in KARAKTERLER.items():
         satirlar.append(f"{k['isim']}: {len(FOTO_HAVUZU.get(key, []))} fotoğraf")
-    for key, k in SOSYAL_DUNYA.get("characters", {}).items():
-        satirlar.append(f"{k['isim']} (yan karakter): {len(FOTO_HAVUZU.get(key, []))} fotoğraf")
     satirlar.append("\nTek aday için /uret, birkaç aday için /havuzdoldur 5 yaz. Yüz referansı kaydetmek için net bir karakter fotoğrafını 'yuzref leyla' gibi bir altyazıyla gönder.")
     await update.message.reply_text("\n".join(satirlar))
 
@@ -721,13 +637,11 @@ async def havuzsil_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         key = context.args[0].strip()
         if key not in KARAKTERLER:
-            key = find_character_key(key, SOSYAL_DUNYA) or ""
-        if not key:
-            await update.message.reply_text("Bu yan karakteri henüz tanımıyorum. Önce onu hikâyede tanıt.")
+            await update.message.reply_text("Karakter bulunamadı. Ana karakter adını yaz.")
             return
     FOTO_HAVUZU[key] = []
     await havuz_kaydet()
-    await update.message.reply_text(f"{_sosyal_karakter(key)['isim']} havuzu boşaltıldı.")
+    await update.message.reply_text(f"{KARAKTERLER[key]['isim']} havuzu boşaltıldı.")
 
 
 async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -739,12 +653,11 @@ async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if ad.startswith("yuzref "):
         ad_karakter = ad.split(maxsplit=1)[1].strip()
-        key = ad_karakter if ad_karakter in KARAKTERLER else find_character_key(ad_karakter, SOSYAL_DUNYA)
-        karakter = _sosyal_karakter(key) if key else None
+        key = ad_karakter if ad_karakter in KARAKTERLER else None
+        karakter = KARAKTERLER.get(key) if key else None
         if not karakter:
-            await update.message.reply_text("Karakteri tanıyamadım. Örnek: yuzref leyla veya yuzref hatice.")
+            await update.message.reply_text("Karakteri tanıyamadım. Örnek: yuzref leyla gibi.")
             return
-        _foto_slotu_ekle(key)
         uygun = [p for p in update.message.photo if max(p.width, p.height) <= 512]
         if not uygun:
             await update.message.reply_text("Bu fotoğrafın 512 pikselden küçük bir sürümü bulunamadı.")
@@ -768,8 +681,6 @@ async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if ad in KARAKTERLER:
         key = ad
-    elif find_character_key(ad, SOSYAL_DUNYA):
-        key = find_character_key(ad, SOSYAL_DUNYA)
     elif durum:
         key = durum["karakter"]
     else:
@@ -779,7 +690,7 @@ async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if file_id not in FOTO_HAVUZU[key]:
         FOTO_HAVUZU[key].append(file_id)
         await havuz_kaydet()
-    await update.message.reply_text(f"✅ {_sosyal_karakter(key)['isim']} havuzunda şimdi {len(FOTO_HAVUZU[key])} fotoğraf var.")
+    await update.message.reply_text(f"✅ {KARAKTERLER[key]['isim']} havuzunda şimdi {len(FOTO_HAVUZU[key])} fotoğraf var.")
 
 
 # --- /stil, /hikaye, /sahne ---
@@ -832,68 +743,10 @@ async def hikaye_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def davet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Invite a known supporting character or create one from a name as the story needs."""
-    if not yetkili_mi(update):
-        return
-    user_id = update.effective_user.id
-    state = kullanici_durumu.get(user_id)
-    if not state:
-        await update.message.reply_text("Önce /start ile bir ana karakter seç.")
-        return
-    name = " ".join(context.args or []).strip()
-    if not name:
-        await update.message.reply_text("Örnek: /davet Hatice — yeni yan karakterin kimliğini ve ilişkisini sistem kurar.")
-        return
-    anchor_key = state["karakter"]
-    anchor_name = KARAKTERLER[anchor_key]["isim"]
-    profile, _ = create_character(SOSYAL_DUNYA, name, f"{anchor_name} ile aynı sosyal çevreden tanıdık", anchor_key, anchor_name)
-    if not profile:
-        await update.message.reply_text("Bu adı karakter olarak kullanamadım. Yalnızca adını yaz, örneğin /davet Hatice.")
-        return
-    key = profile["key"]
-    _foto_slotu_ekle(key)
-    joined, _ = await _update_sosyal_sahne(f"{profile['isim']} gelsin", state, anchor_key)
-    if key not in state["sahne_katilimcilari"]:
-        state["sahne_katilimcilari"].append(key)
-        joined.append(key)
-    state["son_yan_karakterler"] = list(dict.fromkeys(state.get("son_yan_karakterler", []) + [key]))[-12:]
-    await sosyal_dunya_kaydet()
-    await durum_kaydet(user_id)
-    await update.message.reply_text(f"{profile['isim']} sahneye katıldı. {anchor_name} ve {profile['isim']} birlikte sohbete devam edebilir.")
 
 
-async def yalniz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Remove all supporting characters from the live scene without deleting their histories."""
-    if not yetkili_mi(update):
-        return
-    user_id = update.effective_user.id
-    state = kullanici_durumu.get(user_id)
-    if not state:
-        await update.message.reply_text("Önce /start ile bir karakter seç.")
-        return
-    departed = list(state.get("sahne_katilimcilari", []))
-    state["sahne_katilimcilari"] = []
-    if departed:
-        append_world_event(state, [state["karakter"], *departed], "Kullanıcı bire bir sohbete döndü; yan karakter hafızaları saklandı.", "departure")
-    await durum_kaydet(user_id)
-    await update.message.reply_text("Bire bir sohbete döndünüz. Yan karakterlerin hafızaları ve ilişkileri korundu.")
 
 
-async def yanlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not yetkili_mi(update):
-        return
-    characters = SOSYAL_DUNYA.get("characters", {})
-    if not characters:
-        await update.effective_message.reply_text("Henüz tanıtılmış yan karakter yok. Hikâyede doğal olarak tanıtılabilir veya /davet Hatice yazabilirsin.")
-        return
-    lines = ["Tanıdık yan karakterler:"]
-    active = set((kullanici_durumu.get(update.effective_user.id) or {}).get("sahne_katilimcilari", []))
-    for key, character in characters.items():
-        status = " (şu an sahnede)" if key in active else ""
-        lines.append(f"• {character['isim']}: {character.get('gecmis', 'tanıdık')}{status}")
-    lines.append("Birini davet etmek için /davet <ad>, bire bir dönmek için /yalniz.")
-    await update.effective_message.reply_text("\n".join(lines))
 
 
 async def sahne_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1048,13 +901,8 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
     hafiza = hafiza_al(durum)
     karakter = KARAKTERLER[secilen_karakter]
 
-    # Açık fotoğraf isteğinde sohbet modelini bekletmeden doğrudan fotoğraf gönder.
+    # Açık fotoğraf isteğinde yalnızca seçili ana karakterin fotoğrafını gönder.
     if foto_istegi_mi(user_message):
-        await _sosyal_kisileri_bul_ve_kaydet(user_message, durum, secilen_karakter)
-        targets = photo_targets(user_message, SOSYAL_DUNYA, KARAKTERLER, secilen_karakter)
-        target_characters = [_sosyal_karakter(key) for key in targets]
-        for key in targets:
-            _foto_slotu_ekle(key)
         scene_prompt = foto_konusma_baglamini_olustur(
             hafiza, user_message,
             durum.setdefault("sahne_hafizasi", {}).get(secilen_karakter, ""),
@@ -1065,77 +913,18 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         esik_belirle(durum)
         try:
             caption = random.choice(FOTO_ALTYAZILARI) if EMOJI_KULLAN else emoji_temizle(random.choice(FOTO_ALTYAZILARI))
-            if len(target_characters) >= 2:
-                if len(target_characters) > 4:
-                    await update.message.reply_text("Mevcut görsel altyapısı ortak karede en fazla dört kişiyi destekliyor.")
-                    await durum_kaydet(user_id)
-                    return
-                references = [await _referans_gorselini_indir(context.bot, key) for key in targets]
-                missing = [character["isim"] for character, reference in zip(target_characters, references) if not reference]
-                if missing:
-                    instructions = "; ".join(
-                        f"{name}: fotoğrafı altyazısına ‘yuzref {name.split()[0]}’ yazıp gönder"
-                        for name in missing
-                    )
-                    await update.message.reply_text(
-                        "Mevcut fotoğraf motoru img2img çalışıyor; ortak fotoğraftaki her kişi için ayrı bir ilk yüz referansı gerekiyor. "
-                        f"{instructions}. Sonraki fotoğrafları bu referanslardan üretebilirim."
-                    )
-                else:
-                    image = await foto_uret_ortak_bytes(
-                        target_characters, random.randint(1, 999999), references, scene_prompt,
-                    )
-                    sent = await context.bot.send_photo(chat_id=chat_id, photo=image, caption=caption)
-                    side_targets = [key for key in targets if key in SOSYAL_DUNYA.get("characters", {})]
-                    append_scene_memories(
-                        durum, side_targets, user_message,
-                        f"{', '.join(character['isim'] for character in target_characters)} birlikte fotoğraf çektirdi.",
-                    )
-                    append_world_event(
-                        durum, targets,
-                        f"{', '.join(character['isim'] for character in target_characters)} birlikte fotoğraf çektirdi.",
-                        kind="shared_photo",
-                    )
-                    sizes = getattr(sent, "photo", []) or []
-                    durum["ortak_anilar"].append({
-                        "at": int(time.time()), "people": targets,
-                        "description": user_message[:500],
-                        "file_id": sizes[-1].file_id if sizes else None,
-                    })
-                    del durum["ortak_anilar"][:-40]
-            else:
-                target_key = targets[0]
-                target_character = target_characters[0]
-                if target_key in SOSYAL_DUNYA.get("characters", {}) and not (
-                    YUZ_REFERANSLARI.get(target_key) or FOTO_HAVUZU.get(target_key)
-                ):
-                    await update.message.reply_text(
-                        f"{target_character['isim']} için mevcut motor ilk resmi sıfırdan üretemiyor; img2img için bir başlangıç yüz fotoğrafı gerekiyor. "
-                        f"Bir fotoğrafı altyazısına ‘yuzref {target_character['isim'].split()[0]}’ yazarak gönder; sonraki fotoğrafları bu kimlikle üretebilirim."
-                    )
-                    await durum_kaydet(user_id)
-                    return
-                await foto_gonder(
-                    context.bot, chat_id, target_character,
-                    caption=caption,
-                    yakinlik=(yakinlik_seviyesi(yakinlik_puani(durum, target_key)) if target_key in KARAKTERLER else 0),
-                    havuzdan=False,
-                    scene_prompt=scene_prompt,
-                )
+            await foto_gonder(
+                context.bot, chat_id, karakter,
+                caption=caption,
+                yakinlik=yakinlik_seviyesi(yakinlik_puani(durum, secilen_karakter)),
+                havuzdan=False,
+                scene_prompt=scene_prompt,
+            )
         except Exception as img_error:
-            logging.error(f"Görsel isteği hatası: {img_error}")
+            logging.error("Görsel isteği hatası: %s", img_error)
             await update.message.reply_text("Şu an fotoğrafı hazırlayamadım; biraz sonra tekrar deneyelim.")
         await durum_kaydet(user_id)
         return
-
-    await _sosyal_kisileri_bul_ve_kaydet(user_message, durum, secilen_karakter)
-    joined_by_user, departed_by_user = await _update_sosyal_sahne(user_message, durum, secilen_karakter)
-    scene_side_keys = list(durum.get("sahne_katilimcilari", []))
-    update_scene_state(
-        durum, secilen_karakter, user_message,
-        [SOSYAL_DUNYA["characters"][key]["isim"] for key in scene_side_keys if key in SOSYAL_DUNYA.get("characters", {})],
-        known_people=_known_person_names(),
-    )
 
     # Kullanıcının açıkça söylediği ad/yaş bilgilerini karakterlerden bağımsız sakla.
     kullanici_bilgisi_ogren(durum, user_message)
@@ -1159,9 +948,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         if sahne_notu else
         "[SAHNE HAFIZASI] Ayrı bir sahne notu yok; hikâye ortamını ve son konuşmalardaki eylemleri esas al, sebepsiz yer/iş değişikliği yapma."
     )
-    sosyal_notu = social_scene_context(durum, SOSYAL_DUNYA, secilen_karakter, karakter["isim"])
-    kalici_sahne_notu = scene_state_context(durum, secilen_karakter)
-    ekstra_sistem = profil_notu + "\n\n" + tanisma_notu + "\n\n" + sahne_devamlilik + "\n\n" + kalici_sahne_notu + "\n\n" + sosyal_notu
+    ekstra_sistem = profil_notu + "\n\n" + tanisma_notu + "\n\n" + sahne_devamlilik
 
     # Yakınlık puanı (soğuma hesabı için en başta) ve sayaçlar
     eski_sev, yeni_sev = yakinlik_ekle(durum, user_message)
@@ -1182,25 +969,6 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
             dunya_notu=dunya_ozeti(durum, secilen_karakter),
             ekstra_sistem=ekstra_sistem,
         )
-        await _sosyal_kisileri_bul_ve_kaydet(cevap, durum, secilen_karakter)
-        joined_by_reply, departed_by_reply = await _update_sosyal_sahne(cevap, durum, secilen_karakter)
-        speakers = speaker_character_keys(cevap, SOSYAL_DUNYA)
-        for speaker_key in speakers:
-            if speaker_key not in durum["sahne_katilimcilari"]:
-                durum["sahne_katilimcilari"].append(speaker_key)
-                joined_by_reply.append(speaker_key)
-        turn_side_keys = list(dict.fromkeys(
-            scene_side_keys + joined_by_reply + departed_by_reply + joined_by_user + departed_by_user
-        ))
-        append_scene_memories(durum, turn_side_keys, user_message, cevap)
-        update_scene_state(
-            durum, secilen_karakter, cevap,
-            [SOSYAL_DUNYA["characters"][key]["isim"] for key in durum.get("sahne_katilimcilari", []) if key in SOSYAL_DUNYA.get("characters", {})],
-            known_people=_known_person_names(),
-        )
-        if joined_by_reply or departed_by_reply:
-            # Keep the stage state and the per-character memories together in the existing Redis user record.
-            await durum_kaydet(user_id)
         await cevabi_ilet(context.bot, chat_id, dusunce, cevap, secilen_karakter, durum.get("ses_acik", False))
 
         # Yalnızca karakterin kendi yanıtında açık bir anlık eylem varsa sahne fotoğrafı gönder.
@@ -1283,15 +1051,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_init(app):
     if DB_AKTIF:
         try:
-            world = await asyncio.to_thread(sosyal_dunya_yukle_sync)
-            SOSYAL_DUNYA.clear()
-            SOSYAL_DUNYA.update(world)
-            for key in SOSYAL_DUNYA.get("characters", {}):
-                _foto_slotu_ekle(key)
-            logging.info("Dinamik sosyal dünya yüklendi: %s yan karakter.", len(SOSYAL_DUNYA.get("characters", {})))
-        except Exception as exc:
-            logging.error("Sosyal dünya Redis'ten yüklenemedi; boş RAM dünyasıyla devam ediliyor: %s", exc)
-        try:
             yuklenen = await asyncio.to_thread(durumlari_yukle_sync, durum_tamamla)
             kullanici_durumu.update(yuklenen)
             logging.info(f"Kalıcı hafıza açık, {len(yuklenen)} kullanıcı yüklendi.")
@@ -1311,7 +1070,6 @@ async def post_init(app):
             logging.error(f"Hafıza yüklenemedi (RAM ile devam): {e}")
     else:
         logging.warning("UPSTASH_REDIS_REST_URL/TOKEN yok: hafıza sadece RAM'de, yeniden başlayınca silinir.")
-        logging.warning("Yan karakterler ve ilişkileri Redis olmadan yeniden başlatmada kalıcı olmayacak.")
 
     logging.info(f"Fotoğraf: AI Horde img2img açık ({AI_HORDE_IMAGE_MODEL}; isteğe uyarlanan denoise, 25 steps, CFG 6).")
     logging.info("AI Horde: " + ("açık (anahtar " + ("var" if AI_HORDE_KEY != "0000000000" else "yok, anonim") + ")." if AI_HORDE_ACIK else "kapalı."))
@@ -1365,9 +1123,6 @@ def main():
     application.add_handler(CommandHandler("stil", stil_command))
     application.add_handler(CommandHandler("hikaye", hikaye_command))
     application.add_handler(CommandHandler("sahne", sahne_command))
-    application.add_handler(CommandHandler("davet", davet_command))
-    application.add_handler(CommandHandler("yalniz", yalniz_command))
-    application.add_handler(CommandHandler("yanlar", yanlar_command))
     application.add_handler(CommandHandler("yakinlik", yakinlik_command))
     application.add_handler(CommandHandler("uret", uret_command))
     application.add_handler(CommandHandler("havuzdoldur", havuzdoldur_command))
