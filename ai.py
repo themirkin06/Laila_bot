@@ -271,7 +271,7 @@ def ai_horde_uret_sync(messages: list, max_length: int = None, on_ek: str = "") 
     payload = {
         "prompt": prompt,
         "params": {
-            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 450),
+            "max_length": max_length or _env_int("AI_HORDE_MAX_TOKENS", 700),
             "max_context_length": _env_int("AI_HORDE_CONTEXT", 4096),
             "temperature": AI_HORDE_SICAKLIK,
             "top_p": 0.9,
@@ -466,7 +466,34 @@ def horde_bozuk_mu(metin: str):
     return None
 
 
+def horde_kanalini_ayristir(metin: str) -> str:
+    """Horde kanal başlıklarından kullanıcıya gösterilecek metni seçer."""
+    metin = (metin or "").strip()
+    kanal = re.compile(r"<\|channel\s*>\s*(analysis|thought|reasoning|final)\b", re.I)
+    eslesmeler = list(kanal.finditer(metin))
+    if eslesmeler:
+        finaller = [m for m in eslesmeler if m.group(1).lower() == "final"]
+        if finaller:
+            bas = finaller[-1].end()
+            sonraki = re.search(r"<\|(?:channel|im_end|eot_id)\b", metin[bas:], re.I)
+            metin = metin[bas:bas + sonraki.start()] if sonraki else metin[bas:]
+        else:
+            # Bazı worker'lar doğal yanıtı da thought etiketiyle gönderiyor.
+            # Final bölümü yoksa diyaloğu kaybetmemek için yalnızca başlığı kaldır.
+            metin = metin[eslesmeler[0].end():]
+    metin = re.sub(
+        r"<\|(?:channel|meta_sep)\s*>\s*(?:analysis|thought|reasoning|final|commentary|justify|confidence|summary)\b",
+        "", metin, flags=re.I
+    )
+    metin = re.sub(
+        r"<\|(?:im_start|im_end|fim_suffix|eot_id|end_of_task|begin_of_text|end_of_text)\|>",
+        "", metin, flags=re.I
+    )
+    return metin.strip()
+
+
 def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
+    metin = horde_kanalini_ayristir(metin)
     metin = re.sub(r"<\|?(?:im_start|im_end|start_of_turn|end_of_turn)\|?>(?:\s*(?:model|user|assistant|system))?", "", metin)
     metin = re.sub(r"<\|start_header_id\|>\s*(?:assistant|user|system)?\s*(?:<\|end_header_id\|>)?", "", metin)
     metin = re.sub(r"<\|(?:eot_id|end_header_id|begin_of_text|end_of_text)\|>", "", metin)
@@ -688,9 +715,9 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
             )
             try:
                 token_limiti = (
-                    _env_int("AI_HORDE_MAX_TOKENS_RP", 550)
+                    _env_int("AI_HORDE_MAX_TOKENS_RP", 850)
                     if (rp or hikaye)
-                    else _env_int("AI_HORDE_MAX_TOKENS", 450)
+                    else _env_int("AI_HORDE_MAX_TOKENS", 700)
                 )
                 aday = ""
                 for deneme in range(2):
