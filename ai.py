@@ -515,30 +515,33 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
 
     return metin
 def kurgusal_icsesi_ayristir(metin: str, karakter_key: str = "") -> tuple[str, str]:
-    """Yalnızca açık etiketli kurgusal duyguyu ve konuşmayı ayrı çıkarır."""
+    """Karakterin kurgusal iç sesini ve konuşmasını ayır; etiketsiz normal yanıtı da koru."""
     metin = dusunce_bloklarini_sil(metin or "")
-    ses_etiketi = r"\[\s*KARAKTERİN\s+KURGUSAL\s+İÇ\s+SESİ\s*\]"
-    konusma_etiketi = r"\[\s*KARAKTERİN\s+KONUŞMASI\s*\]"
-    konusma = re.search(konusma_etiketi, metin, flags=re.I)
-    if not konusma:
-        # Eski [CEVAP] biçimini koru; eski iç düşünceyi hiçbir zaman gösterme.
-        legacy_tag = re.search(r"\[\s*cevap\s*\]", metin, flags=re.I)
-        if legacy_tag:
-            cevap = metin[legacy_tag.end():]
-            sonraki = re.search(r"\[\s*(?:cevap|d[üu]şünce)\s*\]", cevap, flags=re.I)
-            if sonraki:
-                cevap = cevap[:sonraki.start()]
-            return "", horde_cevabini_temizle(cevap, karakter_key)
-        # Etiketsiz çıktı özel akıl yürütme olabilir; güvenli biçimde gösterme.
-        return "", ""
+    dusunce_etiketi = r"\[\s*(?:KARAKTERİN\s+KURGUSAL\s+İÇ\s+SESİ|D[ÜU]ŞÜNCE)\s*\]"
+    cevap_etiketi = r"\[\s*(?:KARAKTERİN\s+KONUŞMASI|CEVAP)\s*\]"
+    dusunce = re.search(dusunce_etiketi, metin, flags=re.I)
+    cevap = re.search(cevap_etiketi, metin, flags=re.I)
 
-    onceki = metin[:konusma.start()]
-    eslesme = re.search(ses_etiketi + r"\s*(.*)$", onceki, flags=re.I | re.S)
-    ic_ses = horde_cevabini_temizle(eslesme.group(1), karakter_key) if eslesme else ""
-    cevap = horde_cevabini_temizle(metin[konusma.end():], karakter_key)
-    if horde_bozuk_mu(ic_ses) or len(ic_ses) > 240 or "\n" in ic_ses:
-        ic_ses = ""
-    return ic_ses, cevap
+    if cevap:
+        onceki = metin[:cevap.start()]
+        dusunce_onceki = re.search(dusunce_etiketi + r"\s*(.*)$", onceki, flags=re.I | re.S)
+        ic_ses = dusunce_onceki.group(1).strip() if dusunce_onceki else ""
+        yanit = metin[cevap.end():]
+        sonraki = re.search(r"\[\s*(?:KARAKTERİN\s+KURGUSAL\s+İÇ\s+SESİ|D[ÜU]ŞÜNCE|KARAKTERİN\s+KONUŞMASI|CEVAP)\s*\]", yanit, flags=re.I)
+        if sonraki:
+            yanit = yanit[:sonraki.start()]
+        return (
+            horde_cevabini_temizle(ic_ses, karakter_key),
+            horde_cevabini_temizle(yanit, karakter_key),
+        )
+
+    # Yalnızca iç ses etiketi geldiyse onu konuşma diye kullanıcıya gönderme.
+    if dusunce:
+        return horde_cevabini_temizle(metin[dusunce.end():], karakter_key), ""
+
+    # Bazı Horde yanıtları etiketleri atlıyor. Açık think/reasoning blokları yukarıda
+    # çıkarıldı; geriye kalan normal metni konuşma olarak koru.
+    return "", horde_cevabini_temizle(metin, karakter_key)
 
 
 def horde_butceye_sigdir(sistem: str, gecmis: list, son_mesaj: dict) -> list:
