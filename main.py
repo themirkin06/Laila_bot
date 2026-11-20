@@ -11,7 +11,7 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
 
 logging.basicConfig(
@@ -1149,6 +1149,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def post_init(app):
+    # Telegram'da / yazınca görünen komut menüsü.
+    try:
+        await app.bot.set_my_commands([
+            BotCommand("start", "Karakter seç veya ana menüyü aç"),
+            BotCommand("ses", "Sesli yanıt ayarları"),
+            BotCommand("sifirla", "Seçili karakterin sohbet geçmişini temizle"),
+            BotCommand("hafizatemizle", "Seçili karakterin hafızasını temizle"),
+            BotCommand("tamtemizle", "Tüm hafızayı onayla ve temizle"),
+            BotCommand("stil", "Konuşma stilini değiştir"),
+            BotCommand("hikaye", "Hikâye modunu aç"),
+            BotCommand("sahne", "Sohbet sahnesini ayarla"),
+            BotCommand("yakinlik", "Yakınlık seviyesini göster"),
+            BotCommand("havuz", "Fotoğraf havuzu bilgisi"),
+        ])
+        logging.info("Telegram komut menüsü güncellendi.")
+    except Exception as e:
+        logging.warning(f"Telegram komut menüsü güncellenemedi: {e}")
     if DB_AKTIF:
         try:
             yuklenen = await asyncio.to_thread(durumlari_yukle_sync, durum_tamamla)
