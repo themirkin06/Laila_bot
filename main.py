@@ -11,7 +11,7 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, BotCommand
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
 
 logging.basicConfig(
@@ -123,21 +123,6 @@ def durum_tamamla(d: dict) -> dict:
     if "proaktif_esik" not in d:
         esik_belirle(d)
     return d
-
-
-def canli_dunya_ozeti(durum: dict, karakter_key: str) -> str:
-    """Anlık rutin/takvim bilgisini kalıcı dünya notlarıyla birleştirir."""
-    try:
-        anlik = hayat_ozeti(karakter_key, durum)
-    except Exception as hata:
-        logging.warning("Anlık dünya durumu oluşturulamadı: %s", hata)
-        anlik = ""
-    try:
-        kayitli = dunya_ozeti(durum, karakter_key)
-    except Exception as hata:
-        logging.warning("Kayıtlı dünya özeti oluşturulamadı: %s", hata)
-        kayitli = ""
-    return "\\n".join(parca for parca in (anlik, kayitli) if parca)
 
 
 def yeni_durum(karakter: str, chat_id: int) -> dict:
@@ -262,7 +247,8 @@ def foto_konusma_baglamini_olustur(hafiza: list, istek: str, sahne_notu: str = "
 
 
 async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
-    """Cevabı ||| ile parçalara bölüp, aralarda 'yazıyor...' göstererek gönderir."""
+    """Yalnızca karakterin kullanıcıya yönelik cevabını gönderir; iç düşünce gösterilmez."""
+    # dusunce parametresi eski çağrılarla uyumluluk için tutulur, hiçbir yerde yayımlanmaz.
     parcalar = [p.strip() for p in cevap.split("|||") if p.strip()][:3] or [cevap]
 
     for i, parca in enumerate(parcalar):
@@ -270,11 +256,9 @@ async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
             await bot.send_chat_action(chat_id=chat_id, action="typing")
             await asyncio.sleep(min(1.0 + len(parca) * 0.04, 4.0))
 
-        duz = f"💭 {dusunce}\n\n{parca}" if (i == 0 and dusunce) else parca
+        duz = parca
         guvenli = html.escape(parca)
-        guvenli = re.sub(r"\*{1,2}([^*\n]+?)\*{1,2}", r"<i>\1</i>", guvenli)  # *hareket* -> italik
-        if i == 0 and dusunce:
-            guvenli = f"<i>💭 {html.escape(dusunce)}</i>\n\n{guvenli}"
+        guvenli = re.sub(r"\\*{1,2}([^*\\n]+?)\\*{1,2}", r"<i>\\1</i>", guvenli)
         try:
             await bot.send_message(chat_id=chat_id, text=guvenli, parse_mode="HTML")
         except Exception as html_error:
@@ -766,9 +750,8 @@ async def sahne_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🎬 Sahne güncellendi: {metin}")
 
 
-# --- Hafıza temizleme komutları ---
+# --- Seçili karakterin sohbetini sıfırla ---
 async def sifirla_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Yalnızca seçili karakterin kısa sohbet geçmişini temizler."""
     if not yetkili_mi(update):
         return
     user_id = update.effective_user.id
@@ -776,61 +759,10 @@ async def sifirla_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not durum:
         await update.message.reply_text("Önce /start ile bir karakter seç.")
         return
-    karakter = durum["karakter"]
-    karakter_adi = KARAKTERLER[karakter]["isim"]
-    hafizalar = durum.setdefault("hafizalar", {})
-    if not isinstance(hafizalar, dict):
-        hafizalar = {}
-        durum["hafizalar"] = hafizalar
-    hafizalar[karakter] = []
+    karakter_adi = KARAKTERLER[durum["karakter"]]["isim"]
+    durum["hafizalar"][durum["karakter"]] = []
     await durum_kaydet(user_id)
-    await update.message.reply_text(
-        f"{karakter_adi} ile kısa sohbet geçmişin temizlendi. "
-        "Uzun süreli anılar, günlük notlar ve yakınlık puanın korundu."
-    )
-
-
-async def hafizatemizle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Seçili karakterin tüm hafıza kayıtlarını temizler; yakınlık korunur."""
-    if not yetkili_mi(update):
-        return
-    user_id = update.effective_user.id
-    durum = kullanici_durumu.get(user_id)
-    if not durum:
-        await update.message.reply_text("Önce /start ile bir karakter seç.")
-        return
-    karakter = durum["karakter"]
-    karakter_adi = KARAKTERLER[karakter]["isim"]
-    karakter_hafizasini_temizle(durum, karakter)
-    await durum_kaydet(user_id)
-    await update.message.reply_text(
-        f"{karakter_adi} için kısa sohbet geçmişi, uzun süreli anılar, "
-        "günlük notlar ve sahne hafızası temizlendi. Yakınlık puanın korundu."
-    )
-
-
-async def tamtemizle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Tüm hafızayı ve ilişki ilerlemesini onayla temizler."""
-    if not yetkili_mi(update):
-        return
-    user_id = update.effective_user.id
-    durum = kullanici_durumu.get(user_id)
-    if not durum:
-        await update.message.reply_text("Önce /start ile bir karakter seç.")
-        return
-
-    klavye = InlineKeyboardMarkup([[
-        InlineKeyboardButton("Evet, her şeyi sıfırla", callback_data=f"tamtemizle_onay_{user_id}"),
-        InlineKeyboardButton("Vazgeç", callback_data=f"tamtemizle_iptal_{user_id}"),
-    ]])
-    await update.message.reply_text(
-        "⚠️ *Tam sıfırlama onayı*\n\n"
-        "Bütün karakterlerin sohbet geçmişleri, uzun süreli anıları, günlükleri, "
-        "kullanıcı profilin ve tüm yakınlık/ilişki puanların silinecek. "
-        "Bu işlem geri alınamaz.\n\nDevam etmek istiyor musun?",
-        reply_markup=klavye,
-        parse_mode="Markdown",
-    )
+    await update.message.reply_text(f"{karakter_adi} ile olan sohbet geçmişi silindi. Diğer karakterlere dokunulmadı.")
 
 
 # --- Buton Tıklamalarını Yakalama ---
@@ -840,31 +772,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not yetkili_mi(update):
         return
     user_id = query.from_user.id
-
-    if query.data.startswith("tamtemizle_onay_"):
-        hedef_id = query.data.rsplit("_", 1)[-1]
-        if str(user_id) != hedef_id:
-            await query.edit_message_text("Bu onay isteği sana ait değil.")
-            return
-        durum = kullanici_durumu.get(user_id)
-        if not durum:
-            await query.edit_message_text("Kullanıcı kaydı bulunamadı. İşlem yapılmadı.")
-            return
-        tum_hafizayi_temizle(durum)
-        await durum_kaydet(user_id)
-        await query.edit_message_text(
-            "🧹 Tam sıfırlama tamamlandı. Tüm karakterlerin hafızaları, "
-            "profilin ve yakınlık puanların temizlendi. Seçili karakterin ve stil tercihin korundu."
-        )
-        return
-
-    if query.data.startswith("tamtemizle_iptal_"):
-        hedef_id = query.data.rsplit("_", 1)[-1]
-        if str(user_id) != hedef_id:
-            await query.edit_message_text("Bu işlem sana ait değil.")
-            return
-        await query.edit_message_text("Tam sıfırlama iptal edildi. Hiçbir bilgi silinmedi.")
-        return
 
     if query.data.startswith("gal_"):
         parca = query.data.split("_", 1)[1]
@@ -947,49 +854,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.delete()
 
 
-# --- Uzun süreli hafıza yardımcıları ---
-def uzun_hafizaya_kaydet(durum: dict, karakter: str, mesaj: str):
-    """Kullanıcının açıkça hatırlatılmasını istediği veya tarih/plan belirttiği notları kaydeder.
-
-    Her sohbet mesajını otomatik olarak kalıcılaştırmaz. Hassas içerik olabilecek
-    mesajları da uzun süreli hafızaya almaz.
-    """
-    metin = " ".join(str(mesaj or "").split()).strip()
-    if len(metin) < 8:
-        return
-
-    kucuk = metin.casefold()
-    hassas = (
-        "şifre", "sifre", "parola", "tc kimlik", "kimlik numarası",
-        "telefon numaram", "adresim", "maaşım", "maasim", "borcum",
-        "kredi kartı", "kredi kartim", "hastalığım", "hastaligim",
-        "ilaçlarım", "ilaclarim", "teşhis", "teshis", "depresyon",
-        "intihar", "cinsel", "siyasi görüş", "siyasi gorus",
-    )
-    if any(x in kucuk for x in hassas):
-        return
-
-    # Sadece kullanıcının açık hatırlatma / plan / ortak geçmiş ifadeleri.
-    tetikleyiciler = (
-        "bunu hatırla", "bunu hatirla", "unutma", "aklında tut",
-        "aklinda tut", "söz verdin", "soz verdin", "söz veriyorum",
-        "soz veriyorum", "yarın", "yarin", "haftaya", "gelecek hafta",
-        "önümüzdeki hafta", "onumuzdeki hafta", "gelecek ay",
-        "doğum günüm", "dogum gunum", "yıldönümümüz", "yildonumumuz",
-        "ilk kez", "daha önce konuşmuştuk", "daha once konusmustuk",
-    )
-    if not any(x in kucuk for x in tetikleyiciler):
-        return
-
-    tur = "hatirlatma" if any(
-        x in kucuk for x in ("hatırla", "hatirla", "unutma", "aklında tut", "aklinda tut")
-    ) else "plan_veya_olay"
-
-    # Hafızaya yalnızca kullanıcının kendi ifadesi yazılır; model çıkarımı eklenmez.
-    uzun_hafiza_ekle(durum, metin[:500], karakter=karakter, tur=tur, kaynak="kullanici")
-    gunluk_ekle(durum, metin[:500], karakter=karakter)
-
-
 # --- Mesajları Yakalama ---
 async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str):
     if not yetkili_mi(update):
@@ -1032,8 +896,6 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
 
     # Kullanıcının açıkça söylediği ad/yaş bilgilerini karakterlerden bağımsız sakla.
     kullanici_bilgisi_ogren(durum, user_message)
-    # Açık hatırlatma ve tarih/plan ifadelerini yalnızca seçili karakterin hafızasına yaz.
-    uzun_hafizaya_kaydet(durum, secilen_karakter, user_message)
     profil_notu = kullanici_profili_prompt(
         durum, getattr(update.effective_user, "first_name", "") or ""
     )
@@ -1048,22 +910,13 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         if ilk_tanisma else
         "[DEVAM EDEN TANIŞIKLIK] Yalnızca bu karakterle bu konuşma hafızasında gerçekten yaşanmış olayları ortak geçmiş olarak kullan. "
     )
-    # Karaktere özel uzun süreli anılar ve günlük notları bağlama eklenir.
-    uzun_hafiza_notu = uzun_hafiza_prompt(durum, secilen_karakter, limit=12)
-    gunluk_notu = gunluk_prompt(durum, secilen_karakter, limit=6)
-
     sahne_notu = durum.setdefault("sahne_hafizasi", {}).get(secilen_karakter, "")
     sahne_devamlilik = (
         "[SON KAYDEDİLEN SAHNE] " + sahne_notu + "\nKonuşma geçmişinde daha yeni, açık bir geçiş yoksa bu sahne bilgisini koru."
         if sahne_notu else
         "[SAHNE HAFIZASI] Ayrı bir sahne notu yok; hikâye ortamını ve son konuşmalardaki eylemleri esas al, sebepsiz yer/iş değişikliği yapma."
     )
-    ekstra_sistem = "\n\n".join(
-        parca for parca in (
-            profil_notu, tanisma_notu, sahne_devamlilik,
-            uzun_hafiza_notu, gunluk_notu,
-        ) if parca
-    )
+    ekstra_sistem = profil_notu + "\n\n" + tanisma_notu + "\n\n" + sahne_devamlilik
 
     # Yakınlık puanı (soğuma hesabı için en başta) ve sayaçlar
     eski_sev, yeni_sev = yakinlik_ekle(durum, user_message)
@@ -1081,7 +934,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
             stil=durum.get("stil", "hikaye"),
             sahne=durum["sahneler"].get(secilen_karakter),
             duygu_notu=duygu_ozeti(durum, secilen_karakter),
-            dunya_notu=canli_dunya_ozeti(durum, secilen_karakter),
+            dunya_notu=dunya_ozeti(durum, secilen_karakter),
             ekstra_sistem=ekstra_sistem,
         )
         await cevabi_ilet(context.bot, chat_id, dusunce, cevap, secilen_karakter, durum.get("ses_acik", False))
@@ -1109,7 +962,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
 
 
         hafiza.append({"role": "user", "content": user_message})
-        hafiza.append({"role": "assistant", "content": hafiza_kaydi(dusunce, cevap)})
+        hafiza.append({"role": "assistant", "content": hafiza_kaydi("", cevap)})
         hafizayi_kirp(hafiza)
         durum["son_etkilesim"] = time.time()
         await durum_kaydet(user_id)
@@ -1164,23 +1017,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def post_init(app):
-    # Telegram'da / yazınca görünen komut menüsü.
-    try:
-        await app.bot.set_my_commands([
-            BotCommand("start", "Karakter seç veya ana menüyü aç"),
-            BotCommand("ses", "Sesli yanıt ayarları"),
-            BotCommand("sifirla", "Seçili karakterin sohbet geçmişini temizle"),
-            BotCommand("hafizatemizle", "Seçili karakterin hafızasını temizle"),
-            BotCommand("tamtemizle", "Tüm hafızayı onayla ve temizle"),
-            BotCommand("stil", "Konuşma stilini değiştir"),
-            BotCommand("hikaye", "Hikâye modunu aç"),
-            BotCommand("sahne", "Sohbet sahnesini ayarla"),
-            BotCommand("yakinlik", "Yakınlık seviyesini göster"),
-            BotCommand("havuz", "Fotoğraf havuzu bilgisi"),
-        ])
-        logging.info("Telegram komut menüsü güncellendi.")
-    except Exception as e:
-        logging.warning(f"Telegram komut menüsü güncellenemedi: {e}")
     if DB_AKTIF:
         try:
             yuklenen = await asyncio.to_thread(durumlari_yukle_sync, durum_tamamla)
@@ -1223,7 +1059,7 @@ async def post_init(app):
             "llm_cevap": llm_cevap,
             "hafiza_al": hafiza_al,
             "duygu_ozeti": duygu_ozeti,
-            "dunya_ozeti": canli_dunya_ozeti,
+            "dunya_ozeti": dunya_ozeti,
             "cevabi_ilet": cevabi_ilet,
             "foto_gonder": foto_gonder,
             "otomatik_foto_sahnesi_bul": otomatik_foto_sahnesi_bul,
@@ -1252,8 +1088,6 @@ def main():
     application.add_handler(CommandHandler("karakter", start_command))
     application.add_handler(CommandHandler("ses", ses_command))
     application.add_handler(CommandHandler("sifirla", sifirla_command))
-    application.add_handler(CommandHandler("hafizatemizle", hafizatemizle_command))
-    application.add_handler(CommandHandler("tamtemizle", tamtemizle_command))
     application.add_handler(CommandHandler("stil", stil_command))
     application.add_handler(CommandHandler("hikaye", hikaye_command))
     application.add_handler(CommandHandler("sahne", sahne_command))

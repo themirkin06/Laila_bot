@@ -586,6 +586,24 @@ def horde_bozuk_mu(metin: str):
 
 
 def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
+    # Bazı modeller iç düşünce/durum notlarını yazıp ardından Cevap: başlığı açıyor.
+    # Böyle bir biçimde yalnızca cevap bölümünü kullanıcıya bırak.
+    metin = (metin or "").strip()
+    cevap_basligi = re.search(r"(?im)^\\s*(?:\\[\\s*)?(?:cevap|yanıt)\\s*:\\s*", metin)
+    gizli_on_ek = re.search(
+        r"(?is)^\\s*(?:\\[\\s*(?:düşünceler?|içsel\\s*(?:durum|duygu(?:\\s*durumu)?))\\s*:|"
+        r"düşünceler?\\s*:|içsel\\s*(?:durum|duygu))",
+        metin,
+    )
+    if cevap_basligi and (gizli_on_ek or cevap_basligi.start() < 10):
+        metin = metin[cevap_basligi.end():].strip()
+    elif gizli_on_ek:
+        return ""
+    metin = re.sub(
+        r"(?is)^\\s*\\([^)]*(?:iç dünyan|cevaba dahil edilmez|sadece senin)[^)]*\\)\\s*",
+        "",
+        metin,
+    )
     metin = re.sub(r"<\|?(?:im_start|im_end|start_of_turn|end_of_turn)\|?>(?:\s*(?:model|user|assistant|system))?", "", metin)
     metin = re.sub(r"<\|start_header_id\|>\s*(?:assistant|user|system)?\s*(?:<\|end_header_id\|>)?", "", metin)
     metin = re.sub(r"<\|(?:eot_id|end_header_id|begin_of_text|end_of_text)\|>", "", metin)
@@ -601,6 +619,7 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
     metin = "\n".join(satirlar)
 
     metin = konusma_etiketlerini_temizle(metin)
+    metin = re.sub(r"(?im)^\\s*(?:cevap|yanıt)\\s*:\\s*", "", metin)
     metin = re.sub(r"\[[^\]\n]{0,40}\]", "", metin)
     metin = re.sub(r"\[[^\]\n]*$", "", metin)
 
