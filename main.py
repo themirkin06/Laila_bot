@@ -125,6 +125,21 @@ def durum_tamamla(d: dict) -> dict:
     return d
 
 
+def canli_dunya_ozeti(durum: dict, karakter_key: str) -> str:
+    """Anlık rutin/takvim bilgisini kalıcı dünya notlarıyla birleştirir."""
+    try:
+        anlik = hayat_ozeti(karakter_key, durum)
+    except Exception as hata:
+        logging.warning("Anlık dünya durumu oluşturulamadı: %s", hata)
+        anlik = ""
+    try:
+        kayitli = dunya_ozeti(durum, karakter_key)
+    except Exception as hata:
+        logging.warning("Kayıtlı dünya özeti oluşturulamadı: %s", hata)
+        kayitli = ""
+    return "\\n".join(parca for parca in (anlik, kayitli) if parca)
+
+
 def yeni_durum(karakter: str, chat_id: int) -> dict:
     return durum_tamamla({"karakter": karakter, "chat_id": chat_id})
 
@@ -1066,7 +1081,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
             stil=durum.get("stil", "hikaye"),
             sahne=durum["sahneler"].get(secilen_karakter),
             duygu_notu=duygu_ozeti(durum, secilen_karakter),
-            dunya_notu=dunya_ozeti(durum, secilen_karakter),
+            dunya_notu=canli_dunya_ozeti(durum, secilen_karakter),
             ekstra_sistem=ekstra_sistem,
         )
         await cevabi_ilet(context.bot, chat_id, dusunce, cevap, secilen_karakter, durum.get("ses_acik", False))
@@ -1208,7 +1223,7 @@ async def post_init(app):
             "llm_cevap": llm_cevap,
             "hafiza_al": hafiza_al,
             "duygu_ozeti": duygu_ozeti,
-            "dunya_ozeti": dunya_ozeti,
+            "dunya_ozeti": canli_dunya_ozeti,
             "cevabi_ilet": cevabi_ilet,
             "foto_gonder": foto_gonder,
             "otomatik_foto_sahnesi_bul": otomatik_foto_sahnesi_bul,
