@@ -200,7 +200,7 @@ _KONUSMA_ETIKET = r"\[\s*(?:" + _KONUSMA_AD + r")\s*\]"
 _ETIKET_HEPSI = r"\[\s*(?:" + _IC_SES_AD + "|" + _KONUSMA_AD + r")\s*\]"
 
 
-def cevabi_ayristir(raw_text: str):
+def _cevabi_ayristir_ham(raw_text: str):
     """Model çıktısından (düşünce, cevap) çıkarır. Eski ve yeni etiket biçimlerini, büyük/küçük harf farkını tolere eder."""
     raw_text = (raw_text or "").strip()
 
@@ -221,11 +221,19 @@ def cevabi_ayristir(raw_text: str):
         dusunce = ""
         cevap = re.sub(_IC_ETIKET, "", raw_text, flags=re.I).strip()
 
-    if not cevap or horde_bozuk_mu(cevap):
+    if not cevap:
         # Ham çıktıya geri dönme: bu, ayrıştırılamayan iç düşünceyi sızdırabilir.
         return "", ""
-    # Laila'da ayrı bir iç-ses kanalı kullanılmaz; yalnızca kullanıcıya yönelik cevap döner.
-    return "", cevap
+    # İç ses oyun mekaniğinden söz ediyorsa (sızıntı) kullanıcıya gösterme
+    if dusunce and SIZINTI_KALIBI.search(dusunce):
+        dusunce = ""
+    return dusunce, cevap
+def cevabi_ayristir(raw_text: str):
+    """_cevabi_ayristir_ham + konuşmaya karışan iç-ses bloklarını ayıklama (geçmiş mesajlar için de geçerli)."""
+    dusunce, cevap = _cevabi_ayristir_ham(raw_text)
+    return dusunce, sizinti_bloklarini_ayikla(cevap)
+
+
 # --- AI HORDE (isteğe bağlı: topluluk GPU ağı) ---
 def _env_int(ad: str, varsayilan: int) -> int:
     try:
@@ -515,16 +523,6 @@ def dusunce_bloklarini_sil(metin: str) -> str:
 
 # Yalnızca belirgin iç-analiz ifadelerini yakala. Genel kelimeler (ör. "system", "prompt")
 # tek başına ret sebebi değildir; normal diyalogda yanlış pozitif üretmemelidir.
-PROMPT_YANKISI = re.compile(
-    r"(?is)(?:karakterin tek kısa, özel duygusunu|"
-    r"kullanıcıya söyleyeceği doğal yanıtı yaz|"
-    r"iç ses yalnızca kurgusal duygu olsun|"
-    r"model analizi, adım adım akıl yürütme|"
-    r"yanıt planı, talimat veya kural açıklaması yazma|"
-    r"konuşmayı karakterin kendi kişiliğine ve üslubuna uygun tut)"
-)
-
-
 DUSUNCE_SIZINTISI = re.compile(
     r"(?im)^\s*(?:\[?(?:analysis|reasoning|internal thoughts?)\]?\s*:|"
     r"(?:let me think|i need to (?:answer|respond)|we need to (?:answer|respond)|"
@@ -577,8 +575,12 @@ def horde_bozuk_mu(metin: str):
     metin = (metin or "").strip()
     if not metin:
         return "boş cevap"
-    if DUSUNCE_SIZINTISI.search(metin) or PROMPT_YANKISI.search(metin):
-        return "düşünce veya sistem talimatı sızdı"
+    if DUSUNCE_SIZINTISI.search(metin):
+        return "düşünce metni sızdı"
+    if re.search(r"(?im)^\s*kullanıcı(?:nın)?\s+(?:benden|bana|beni|şu an|istiyor|söylüyor|diyor|düşünceli|mesajı)", metin):
+        return "düşünce metni sızdı"
+    if _SIZINTI_KOSELI.search(metin) or _SIZINTI_KOSELI_ACIK.search(metin):
+        return "etiketli iç ses sızdı"
     # Açık kalmış düşünce etiketleri kullanıcıya gösterilmesin.
     if re.search(r"(?i)<\s*(?:think|thinking|thought|reasoning)\s*>", metin):
         return "kapanmamış düşünce bloğu"
@@ -586,24 +588,6 @@ def horde_bozuk_mu(metin: str):
 
 
 def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
-    # Bazı modeller iç düşünce/durum notlarını yazıp ardından Cevap: başlığı açıyor.
-    # Böyle bir biçimde yalnızca cevap bölümünü kullanıcıya bırak.
-    metin = (metin or "").strip()
-    cevap_basligi = re.search(r"(?im)^\\s*(?:\\[\\s*)?(?:cevap|yanıt)\\s*:\\s*", metin)
-    gizli_on_ek = re.search(
-        r"(?is)^\\s*(?:\\[\\s*(?:düşünceler?|içsel\\s*(?:durum|duygu(?:\\s*durumu)?))\\s*:|"
-        r"düşünceler?\\s*:|içsel\\s*(?:durum|duygu))",
-        metin,
-    )
-    if cevap_basligi and (gizli_on_ek or cevap_basligi.start() < 10):
-        metin = metin[cevap_basligi.end():].strip()
-    elif gizli_on_ek:
-        return ""
-    metin = re.sub(
-        r"(?is)^\\s*\\([^)]*(?:iç dünyan|cevaba dahil edilmez|sadece senin)[^)]*\\)\\s*",
-        "",
-        metin,
-    )
     metin = re.sub(r"<\|?(?:im_start|im_end|start_of_turn|end_of_turn)\|?>(?:\s*(?:model|user|assistant|system))?", "", metin)
     metin = re.sub(r"<\|start_header_id\|>\s*(?:assistant|user|system)?\s*(?:<\|end_header_id\|>)?", "", metin)
     metin = re.sub(r"<\|(?:eot_id|end_header_id|begin_of_text|end_of_text)\|>", "", metin)
@@ -619,7 +603,6 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
     metin = "\n".join(satirlar)
 
     metin = konusma_etiketlerini_temizle(metin)
-    metin = re.sub(r"(?im)^\\s*(?:cevap|yanıt)\\s*:\\s*", "", metin)
     metin = re.sub(r"\[[^\]\n]{0,40}\]", "", metin)
     metin = re.sub(r"\[[^\]\n]*$", "", metin)
 
@@ -641,6 +624,38 @@ def horde_cevabini_temizle(metin: str, karakter_key: str = "") -> str:
             logging.warning(f"Hareket yıldızsız başlıyor: {metin[:80]}")
 
     return metin
+# Modeller istenmeyen biçimlerde iç ses yazabilir: [Düşünceler: ...], [İçsel durum: ...],
+# (Bu kısım sadece senin iç dünyandır...), "Cevap: ...". Bunlar kullanıcıya asla gitmemeli.
+_AD_KATI = (
+    r"(?:d[üÜuU][şŞsS][üÜuU]nce(?:ler(?:im)?|m)?|[iİıI][çÇcC]\s*(?:ses|durum|d[üÜuU][şŞsS][üÜuU]nce(?:ler)?|d[üÜuU]nya|monolog)|"
+    r"[iİıI][çÇcC]sel\s*(?:durum|ses|d[üÜuU][şŞsS][üÜuU]nce(?:ler)?)|kurgusal\s+[iİıI][çÇcC]\s+ses[iİıI]?|"
+    r"karakterin\s+[iİıI][çÇcC]\s+ses[iİıI]|inner\s+(?:thoughts?|voice|state)|thoughts?|thinking|reasoning)"
+)
+_AD_GENIS = _AD_KATI[:-1] + r"|not|analiz|plan|duygu\s+durumu)"
+_SIZINTI_KOSELI = re.compile(r"\[\s*" + _AD_GENIS + r"\s*[:：\-–]\s*.*?\]", re.I | re.S)
+_SIZINTI_KOSELI_ACIK = re.compile(r"\[\s*" + _AD_GENIS + r"\s*[:：\-–][^\]]*\Z", re.I | re.S)
+_SIZINTI_PARANTEZLI = re.compile(r"\(\s*" + _AD_GENIS + r"\s*[:：\-–]\s*.*?\)(?=[ \t]*(?:\n|\Z))", re.I | re.S)
+_SIZINTI_META = re.compile(
+    r"^[ \t]*\([^()\n]*(?:iç dünya|cevaba dahil|cevabın parçası|kullanıcıya gösterilmez|kullanıcıya gösterme|"
+    r"sadece senin iç)[^()\n]*\)[ \t]*$", re.I | re.M)
+_SIZINTI_SATIRI = re.compile(r"^[ \t]*" + _AD_KATI + r"[ \t]*[:：][^\n]*$", re.I | re.M)
+_CEVAP_SATIRI = re.compile(r"^[ \t]*[\[\(]?[ \t]*(?:cevap|yanıt|karakterin\s+konu[şs]mas[ıi])[ \t]*[\]\)]?[ \t]*[:：][ \t]*", re.I | re.M)
+
+
+def sizinti_bloklarini_ayikla(metin: str) -> str:
+    """Konuşma metnine karışan iç-ses/analiz bloklarını ve 'Cevap:' öneklerini siler."""
+    metin = metin or ""
+    metin = _SIZINTI_KOSELI.sub("", metin)
+    metin = _SIZINTI_KOSELI_ACIK.sub("", metin)
+    metin = _SIZINTI_PARANTEZLI.sub("", metin)
+    metin = _SIZINTI_META.sub("", metin)
+    m = _CEVAP_SATIRI.search(metin)
+    if m:  # "Cevap:" etiketinden önceki her şey (düşünce/çıkarım) atılır
+        metin = metin[m.end():]
+    metin = _SIZINTI_SATIRI.sub("", metin)
+    return re.sub(r"\n{3,}", "\n\n", metin).strip()
+
+
 def ic_ses_guvenli(dusunce: str) -> str:
     """Kullanıcıya gösterilecek iç sesi sızıntılara (analiz, oyun mekaniği) karşı denetler."""
     if not dusunce or horde_bozuk_mu(dusunce) or SIZINTI_KALIBI.search(dusunce):
@@ -662,20 +677,18 @@ def kurgusal_icsesi_ayristir(metin: str, karakter_key: str = "") -> tuple[str, s
         sonraki = re.search(_ETIKET_HEPSI, yanit, flags=re.I)
         if sonraki:
             yanit = yanit[:sonraki.start()]
-        temiz_yanit = horde_cevabini_temizle(yanit, karakter_key)
-        if not temiz_yanit or horde_bozuk_mu(temiz_yanit):
-            return "", ""
-        return "", temiz_yanit
+        return (
+            horde_cevabini_temizle(ic_ses, karakter_key),
+            horde_cevabini_temizle(sizinti_bloklarini_ayikla(yanit), karakter_key),
+        )
 
-    # Yalnızca iç ses etiketi geldiyse hiçbir bölüm kullanıcıya gönderilmez.
+    # Yalnızca iç ses etiketi geldiyse onu konuşma diye kullanıcıya gönderme.
     if dusunce:
-        return "", ""
+        return horde_cevabini_temizle(metin[dusunce.end():], karakter_key), ""
 
-    # Etiketsiz normal yanıtı koru; açık düşünce/prompt sızıntısını reddet.
-    temiz_metin = horde_cevabini_temizle(metin, karakter_key)
-    if not temiz_metin or horde_bozuk_mu(temiz_metin):
-        return "", ""
-    return "", temiz_metin
+    # Bazı Horde yanıtları etiketleri atlıyor. Açık think/reasoning blokları yukarıda
+    # çıkarıldı; geriye kalan normal metni konuşma olarak koru.
+    return "", horde_cevabini_temizle(sizinti_bloklarini_ayikla(metin), karakter_key)
 
 
 def _son_mesajlar(liste: list, n) -> list:
@@ -715,57 +728,13 @@ def horde_son_mesaji_butceye_sigdir(sistem: str, son_mesaj: dict) -> dict:
 
 
 def horde_sistemi_kisalt(sistem: str, hedef: int, aileye_ozel: str = "") -> str:
-    """Horde prompt'unu karakter kimliğini koruyarak, isteğe bağlı yönergeleri aşamalı çıkarır."""
+    """Sistem prompt'u hedefi aşarsa önemsiz bölümleri sırayla çıkarır: önce 'doğal merak' bloğu, sonra aileye özel kılavuz."""
     if len(sistem) <= hedef:
         return sistem
-
-    orijinal_uzunluk = len(sistem)
-    yeni = sistem
-
-    # Önce uzunluğu yüksek, karakter kimliğinin parçası olmayan isteğe bağlı sohbet
-    # yönergelerini çıkar. Temel karakter tanımı, ilişki/geçmiş bilgisi ve sahne
-    # bilgileri bu aşamalarda özellikle korunur.
-    temizleme_adimlari = [
-        # Ayrı ve isteğe bağlı doğal merak/sohbeti ilerletme bloğu
-        lambda s: re.sub(
-            r"\[DOĞAL MERAK VE SOHBETİ İLERLETME\].*?uydurma\.\n",
-            "", s, count=1, flags=re.S
-        ),
-        # Horde'da ayrıca tekrar eden sahne/sohbet akışı yönergeleri
-        lambda s: re.sub(
-            r"\[SAHNE DEVAMLILIĞI\].*?(?=\n\s*\[|\Z)",
-            "", s, count=1, flags=re.S | re.I
-        ),
-        # Ayrı hikâye anlatım biçimi bloğu; hikâye modunun ana kuralları kalır
-        lambda s: re.sub(
-            r"\[HİKÂYE ANLATIMI.*?\].*?(?=\n\s*\[|\Z)",
-            "", s, count=1, flags=re.S | re.I
-        ),
-    ]
-
-    for adim in temizleme_adimlari:
-        if len(yeni) <= hedef:
-            break
-        aday = adim(yeni)
-        if aday != yeni:
-            yeni = aday
-
+    yeni = re.sub(r"\[DOĞAL MERAK VE SOHBETİ İLERLETME\].*?uydurma\.\n", "", sistem, count=1, flags=re.S)
     if len(yeni) > hedef and aileye_ozel:
         yeni = yeni.replace(aileye_ozel, "")
-
-    # En son çare: sistem prompt'unun sonundaki genel/ek yönergeleri azalt.
-    # Karakter tanımının başını veya ortasını kesmek yerine yalnızca ek talimat
-    # bölümünden ilerle; hedefe ulaşamıyorsa güvenli biçimde daha uzun bırak.
-    yeni = re.sub(r"\n{3,}", "\n\n", yeni).strip()
-    logging.info(
-        "Horde sistem prompt'u kısaltıldı (%s -> %s karakter, hedef %s).",
-        orijinal_uzunluk, len(yeni), hedef
-    )
-    if len(yeni) > hedef:
-        logging.warning(
-            "Horde sistem prompt'u hedefin üzerinde kaldı (%s/%s); karakter kimliğini kesmemek için zorla kırpılmadı.",
-            len(yeni), hedef
-        )
+    logging.info("Horde sistem prompt'u kısaltıldı (%s -> %s karakter, hedef %s).", len(sistem), len(yeni), hedef)
     return yeni
 
 
@@ -901,9 +870,12 @@ def _dogal_sohbet_kilavuzu(hikaye: bool, rp: bool) -> str:
         "Leyla, Merve, Aslı, Dilek, Ece, Ayşe ve Asena bu merakı kendi karakter sesleriyle ifade etsin; ortak yönerge onları tek bir konuşma tarzına sokmasın. "
         "Kullanıcının anlattığı şeyden doğal bir sohbet fırsatı çıkıyorsa konuyu tek cümlelik kuru bir cevapla kapatma. "
         "Önceki konuşmalarda gerçekten bilinen bir konuya uygun zamanda geri dönebilirsin; hafızanda olmayan ayrıntıyı uydurma.\n"
-        + "[YANIT BİÇİMİ] Yalnızca karakterin kullanıcıya göndereceği doğal mesajı yaz. "
-        + "İç ses, özel düşünce, analiz, akıl yürütme, yanıt planı, talimat açıklaması veya konuşmacı etiketi üretme. "
-        + "Karakterin kişiliğini doğrudan konuşmasına yansıt.\\n"
+        + "[KURGUSAL İÇ SES VE KONUŞMA BİÇİMİ] Her yanıtta şu iki etiketi kullan: "
+        + "[KARAKTERİN KURGUSAL İÇ SESİ] altında karakterin tek kısa, özel duygusunu veya ani dürtüsünü; "
+        + "[KARAKTERİN KONUŞMASI] altında kullanıcıya söyleyeceği doğal yanıtı yaz. "
+        + "Yalnızca bu iki etiketi kullan; [Düşünceler: ...], [İçsel durum: ...], parantezli not veya 'Cevap:' gibi başka biçim yazma. "
+        + "İç ses yalnızca kurgusal duygu olsun; model analizi, adım adım akıl yürütme, yanıt planı, talimat veya kural açıklaması yazma. "
+        + "Konuşmayı karakterin kendi kişiliğine ve üslubuna uygun tut.\n"
         + ("[HİKÂYE MODU] Hareket veya mimik gerekiyorsa *Gülümseyerek sana bakar.* örneğindeki gibi kısa, ayrı bir yıldızlı satır kullan; her yanıtta hareket yazma. Asıl ağırlık karakterin kendi konuşmasında olsun: doğal, samimi ve gerektiğinde birkaç cümlelik dolu bir diyalog kur. Konuşmayı zorla kısaltma; fakat uzun roman paragrafları, şiirsel anlatım ve aynı duyguyu tekrar tekrar açıklamaktan kaçın. Kullanıcının son mesajına doğrudan yanıt ver ve sahneyi uygun olduğunda küçük, mantıklı bir gelişmeyle ilerlet.\n" if hikaye else "")
         + ("[ROLEPLAY MODU] Karakterle anlık etkileşime odaklan. Gerektiğinde kısa hareketi ayrı bir yıldızlı satırda ver; asıl alanı karakterin doğal ve yeterince gelişmiş diyaloğuna bırak. Tek cümleye zorla kısaltma, roman anlatısına da dönüştürme. Sahne anlatıcısı gibi olay örgüsü ilerletme.\n" if rp else "")
         + "FOTOĞRAF TALEPLERİ: Kullanıcı senden fotoğraf istediğinde fotoğraf gönderemediğini, fotoğraf çekemediğini veya yalnızca sahne tarif edebileceğini söyleme. Fotoğrafı bot ayrı bir işlemle gönderebilir; sen sadece doğal ve kısa bir karşılık ver. Örneğin 'Tabii, hemen gönderiyorum.' gibi. Fotoğrafın gerçekten gönderilip gönderilmediği hakkında kendin açıklama yapma; gönderilmemiş bir fotoğrafı göndermiş gibi de iddia etme.\n"
@@ -941,8 +913,21 @@ def _sistem_prompt_parcalari(karakter_key, puan, stil, sahne, duygu_notu, dunya_
     return sistem_temel, dogal_sohbet_kilavuzu, ek
 
 
+_ESKI_FORMAT_KURALI = re.compile(r"3\. Cevap formatı:.*?cevabını yaz\.", re.S)
+_YENI_FORMAT_KURALI = (
+    '3. Cevap formatı: yalnızca iki bölüm yaz. Önce "[KARAKTERİN KURGUSAL İÇ SESİ]" etiketi ve altında tek kısa kurgusal duygu; '
+    'sonra "[KARAKTERİN KONUŞMASI]" etiketi ve altında kullanıcıya gidecek mesaj. '
+    'Başka etiket, köşeli veya normal parantezli not, "Cevap:", "Düşünceler:", "İçsel durum:" gibi başlıklar yazma.'
+)
+
+
 def _sistem_genel_olustur(sistem_temel: str, dogal_sohbet_kilavuzu: str, ek: str) -> str:
-    """Routeway (geniş bağlam) için tam sistem prompt'u."""
+    """Routeway (geniş bağlam) için tam sistem prompt'u.
+
+    Karakter/rp kurallarındaki eski "[DÜŞÜNCE]/[CEVAP]" biçim kuralı, doğal sohbet bloğundaki yeni
+    etiketlerle çelişiyordu; model ikisini karıştırıp kendi biçimini uyduruyordu. Tek biçime indirilir.
+    """
+    sistem_temel = _ESKI_FORMAT_KURALI.sub(lambda m: _YENI_FORMAT_KURALI, sistem_temel)
     return sistem_temel + "\n\n" + dogal_sohbet_kilavuzu + "\n\n" + TURKCE_KONTROL + ek + "\n\n" + NSFW_KURAL + "\n\n" + GEMMA_TURKCE_KILAVUZU
 
 
@@ -1003,15 +988,18 @@ def _mesajlari_hazirla(sistem: str, hafiza: list, kullanici_icerik: str) -> list
 
 async def _routeway_cevap(messages: list, karakter_key: str):
     """Routeway is opt-in and isolated: errors are surfaced, never sent to Horde or Pollinations."""
-    ham = await llm_uret(rolleri_duzenle(messages))
-    dusunce, cevap = kurgusal_icsesi_ayristir(ham, karakter_key)
-    cevap = konusma_etiketlerini_temizle(cevap)
-    if not cevap:
-        raise RuntimeError("Routeway boş cevap döndürdü.")
-    sebep = horde_bozuk_mu(cevap)
-    if sebep:
-        raise RuntimeError(f"Routeway çıktısı bozuk ({sebep})")
-    return ic_ses_guvenli(dusunce), cevap
+    duzenli = rolleri_duzenle(messages)
+    son_sebep = "bilinmeyen"
+    for deneme in range(2):
+        ham = await llm_uret(duzenli)
+        dusunce, cevap = kurgusal_icsesi_ayristir(ham, karakter_key)
+        cevap = konusma_etiketlerini_temizle(cevap)
+        sebep = horde_bozuk_mu(cevap)  # boş cevap da burada yakalanır
+        if not sebep:
+            return ic_ses_guvenli(dusunce), cevap
+        son_sebep = sebep
+        logging.warning("Routeway çıktısı kullanılamadı (%s); %s", sebep, "bir kez yeniden deneniyor." if deneme == 0 else "vazgeçildi.")
+    raise RuntimeError(f"Routeway çıktısı bozuk ({son_sebep})")
 
 
 async def _horde_cevap(sistem_horde: str, messages: list, karakter_key: str, rp: bool, hikaye: bool):
@@ -1028,15 +1016,14 @@ async def _horde_cevap(sistem_horde: str, messages: list, karakter_key: str, rp:
     )
     try:
         token_limiti = (
-            min(512, max(1, _env_int("AI_HORDE_MAX_TOKENS_RP", 512)))
+            _env_int("AI_HORDE_MAX_TOKENS_RP", 550)
             if (rp or hikaye)
-            else min(512, max(1, _env_int("AI_HORDE_MAX_TOKENS", 512)))
+            else _env_int("AI_HORDE_MAX_TOKENS", 450)
         )
         aday = ""
         dusunce_adayi = ""
         for deneme in range(2):
-            # İkinci deneme de 512 token sınırını aşmaz; kudos maliyetini yükseltmesin.
-            max_token = min(512, token_limiti)
+            max_token = token_limiti if deneme == 0 else max(token_limiti + 1, min(token_limiti * 2, 1200))
             ham = await asyncio.to_thread(
                 ai_horde_uret_sync, horde_mesajlari, max_token,
                 horde_on_ek(),   # Cevabı hareketle başlatmaz; yalnızca (varsa) boş düşünce bloğu.
@@ -1046,8 +1033,8 @@ async def _horde_cevap(sistem_horde: str, messages: list, karakter_key: str, rp:
             dusunce_adayi = ic_ses_guvenli(dusunce_adayi)
             aday = cevap_adayi.strip()  # kurgusal_icsesi_ayristir zaten temizledi
             sebep = horde_bozuk_mu(aday) if AI_HORDE_KALITE_KONTROL else None
-            if not aday and deneme == 0:
-                logging.warning("AI Horde yalnızca düşünce/boş çıktı üretti; daha yüksek token sınırıyla bir kez yeniden deneniyor.")
+            if (not aday or sebep) and deneme == 0:
+                logging.warning("AI Horde çıktısı kullanılamadı (%s); daha yüksek token sınırıyla bir kez yeniden deneniyor.", sebep or "boş")
                 continue
             if sebep:
                 raise RuntimeError(f"Horde çıktısı temizleme sonrası da bozuk ({sebep})")
@@ -1094,4 +1081,4 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
     if TURKCE_DUZELT and LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
         cevap = await turkce_duzelt(cevap)
     cevap = emoji_dogal_uygula(cevap, karakter_key)
-    return "", cevap  # yalnızca kullanıcıya yönelik doğal yanıt döndürülür
+    return dusunce, cevap  # yalnızca ayrı etiketli kurgusal iç ses gösterilir
