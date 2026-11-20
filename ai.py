@@ -728,13 +728,44 @@ def horde_son_mesaji_butceye_sigdir(sistem: str, son_mesaj: dict) -> dict:
 
 
 def horde_sistemi_kisalt(sistem: str, hedef: int, aileye_ozel: str = "") -> str:
-    """Sistem prompt'u hedefi aşarsa önemsiz bölümleri sırayla çıkarır: önce 'doğal merak' bloğu, sonra aileye özel kılavuz."""
+    """Sistem prompt'unu kesin karakter hedefine indirirken baştaki karakter kimliğini korur."""
+    hedef = max(500, int(hedef))
     if len(sistem) <= hedef:
         return sistem
-    yeni = re.sub(r"\[DOĞAL MERAK VE SOHBETİ İLERLETME\].*?uydurma\.\n", "", sistem, count=1, flags=re.S)
+
+    yeni = sistem
+    # Önce tekrarlanabilir/ikincil talimat bloklarını çıkar.
+    yeni = re.sub(
+        r"\\[DOĞAL MERAK VE SOHBETİ İLERLETME\\].*?uydurma\\.\\n?",
+        "", yeni, count=1, flags=re.S
+    )
     if len(yeni) > hedef and aileye_ozel:
-        yeni = yeni.replace(aileye_ozel, "")
-    logging.info("Horde sistem prompt'u kısaltıldı (%s -> %s karakter, hedef %s).", len(sistem), len(yeni), hedef)
+        yeni = yeni.replace(aileye_ozel, "", 1)
+
+    # Hâlâ uzunsa tekrar eden boşlukları ve uzun yönerge paragraflarını
+    # sondan başlayarak azalt. Karakter tanımı prompt'un başında kalır.
+    if len(yeni) > hedef:
+        paragraflar = yeni.split("\\n\\n")
+        while len("\\n\\n".join(paragraflar)) > hedef and len(paragraflar) > 2:
+            # Sondan en uzun paragrafı kaldır; son paragrafın çekirdek kapanışını koru.
+            adaylar = range(1, max(1, len(paragraflar) - 1))
+            idx = max(adaylar, key=lambda i: len(paragraflar[i]), default=None)
+            if idx is None:
+                break
+            paragraflar.pop(idx)
+        yeni = "\\n\\n".join(paragraflar)
+
+    # Tek bir uzun blok hâlâ hedefi aşıyorsa baştaki karakter/bağlamı
+    # ve sondaki temel davranış talimatlarını birlikte koruyarak kes.
+    if len(yeni) > hedef:
+        isaret = "\\n[… yönerge bütçesi nedeniyle kısaltıldı …]\\n"
+        pay = max(0, hedef - len(isaret))
+        bas = int(pay * 0.78)
+        son = pay - bas
+        yeni = yeni[:bas] + isaret + (yeni[-son:] if son else "")
+
+    logging.info("Horde sistem prompt'u bütçeye göre kısaltıldı (%s -> %s karakter, hedef %s).",
+                 len(sistem), len(yeni), hedef)
     return yeni
 
 
@@ -769,7 +800,9 @@ def horde_butceye_sigdir(sistem: str, gecmis: list, son_mesaj: dict) -> list:
     if len(sistem) > AI_HORDE_PROMPT_BUTCE * 0.7:
         logging.warning("Horde sistem talimatı bütçenin %s%%'ini aşıyor (%s/%s karakter); sistem metnini kısaltmayı düşün.",
                         int(len(sistem) * 100 / AI_HORDE_PROMPT_BUTCE), len(sistem), AI_HORDE_PROMPT_BUTCE)
-    kalan = max(0, AI_HORDE_PROMPT_BUTCE - len(sistem) - len(str(son_mesaj.get("content", ""))))
+    # Role labels / template separators de karakter bütçesi tüketir.
+    kalan = max(0, AI_HORDE_PROMPT_BUTCE - len(sistem)
+                - len(str(son_mesaj.get("content", ""))) - 120)
     secilen = []
     for item in reversed(gecmis):
         icerik = str(item.get("content", ""))
