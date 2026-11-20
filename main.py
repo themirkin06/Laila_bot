@@ -258,7 +258,7 @@ async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
 
         duz = parca
         guvenli = html.escape(parca)
-        guvenli = re.sub(r"\*{1,2}([^*\n]+?)\*{1,2}", r"<i>\\1</i>", guvenli)
+        guvenli = re.sub(r"\*{1,2}([^*\n]+?)\*{1,2}", r"<i>\1</i>", guvenli)
         try:
             await bot.send_message(chat_id=chat_id, text=guvenli, parse_mode="HTML")
         except Exception as html_error:
