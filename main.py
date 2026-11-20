@@ -1006,7 +1006,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
             await durum_kaydet(user_id)
 
     except Exception as e:
-        logging.error(f"Mesaj işleme hatası: {e}")
+        logging.exception("Mesaj işleme hatası")
         await update.message.reply_text("Şu an biraz dalgınım, tekrar dener misin? 😅")
         return
 
