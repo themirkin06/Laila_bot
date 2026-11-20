@@ -855,6 +855,49 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.delete()
 
 
+# --- Uzun süreli hafıza yardımcıları ---
+def uzun_hafizaya_kaydet(durum: dict, karakter: str, mesaj: str):
+    """Kullanıcının açıkça hatırlatılmasını istediği veya tarih/plan belirttiği notları kaydeder.
+
+    Her sohbet mesajını otomatik olarak kalıcılaştırmaz. Hassas içerik olabilecek
+    mesajları da uzun süreli hafızaya almaz.
+    """
+    metin = " ".join(str(mesaj or "").split()).strip()
+    if len(metin) < 8:
+        return
+
+    kucuk = metin.casefold()
+    hassas = (
+        "şifre", "sifre", "parola", "tc kimlik", "kimlik numarası",
+        "telefon numaram", "adresim", "maaşım", "maasim", "borcum",
+        "kredi kartı", "kredi kartim", "hastalığım", "hastaligim",
+        "ilaçlarım", "ilaclarim", "teşhis", "teshis", "depresyon",
+        "intihar", "cinsel", "siyasi görüş", "siyasi gorus",
+    )
+    if any(x in kucuk for x in hassas):
+        return
+
+    # Sadece kullanıcının açık hatırlatma / plan / ortak geçmiş ifadeleri.
+    tetikleyiciler = (
+        "bunu hatırla", "bunu hatirla", "unutma", "aklında tut",
+        "aklinda tut", "söz verdin", "soz verdin", "söz veriyorum",
+        "soz veriyorum", "yarın", "yarin", "haftaya", "gelecek hafta",
+        "önümüzdeki hafta", "onumuzdeki hafta", "gelecek ay",
+        "doğum günüm", "dogum gunum", "yıldönümümüz", "yildonumumuz",
+        "ilk kez", "daha önce konuşmuştuk", "daha once konusmustuk",
+    )
+    if not any(x in kucuk for x in tetikleyiciler):
+        return
+
+    tur = "hatirlatma" if any(
+        x in kucuk for x in ("hatırla", "hatirla", "unutma", "aklında tut", "aklinda tut")
+    ) else "plan_veya_olay"
+
+    # Hafızaya yalnızca kullanıcının kendi ifadesi yazılır; model çıkarımı eklenmez.
+    uzun_hafiza_ekle(durum, metin[:500], karakter=karakter, tur=tur, kaynak="kullanici")
+    gunluk_ekle(durum, metin[:500], karakter=karakter)
+
+
 # --- Mesajları Yakalama ---
 async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str):
     if not yetkili_mi(update):
@@ -897,6 +940,8 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
 
     # Kullanıcının açıkça söylediği ad/yaş bilgilerini karakterlerden bağımsız sakla.
     kullanici_bilgisi_ogren(durum, user_message)
+    # Açık hatırlatma ve tarih/plan ifadelerini yalnızca seçili karakterin hafızasına yaz.
+    uzun_hafizaya_kaydet(durum, secilen_karakter, user_message)
     profil_notu = kullanici_profili_prompt(
         durum, getattr(update.effective_user, "first_name", "") or ""
     )
@@ -911,13 +956,22 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         if ilk_tanisma else
         "[DEVAM EDEN TANIŞIKLIK] Yalnızca bu karakterle bu konuşma hafızasında gerçekten yaşanmış olayları ortak geçmiş olarak kullan. "
     )
+    # Karaktere özel uzun süreli anılar ve günlük notları bağlama eklenir.
+    uzun_hafiza_notu = uzun_hafiza_prompt(durum, secilen_karakter, limit=12)
+    gunluk_notu = gunluk_prompt(durum, secilen_karakter, limit=6)
+
     sahne_notu = durum.setdefault("sahne_hafizasi", {}).get(secilen_karakter, "")
     sahne_devamlilik = (
         "[SON KAYDEDİLEN SAHNE] " + sahne_notu + "\nKonuşma geçmişinde daha yeni, açık bir geçiş yoksa bu sahne bilgisini koru."
         if sahne_notu else
         "[SAHNE HAFIZASI] Ayrı bir sahne notu yok; hikâye ortamını ve son konuşmalardaki eylemleri esas al, sebepsiz yer/iş değişikliği yapma."
     )
-    ekstra_sistem = profil_notu + "\n\n" + tanisma_notu + "\n\n" + sahne_devamlilik
+    ekstra_sistem = "\n\n".join(
+        parca for parca in (
+            profil_notu, tanisma_notu, sahne_devamlilik,
+            uzun_hafiza_notu, gunluk_notu,
+        ) if parca
+    )
 
     # Yakınlık puanı (soğuma hesabı için en başta) ve sayaçlar
     eski_sev, yeni_sev = yakinlik_ekle(durum, user_message)
