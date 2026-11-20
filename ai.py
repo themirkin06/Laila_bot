@@ -696,13 +696,57 @@ def horde_son_mesaji_butceye_sigdir(sistem: str, son_mesaj: dict) -> dict:
 
 
 def horde_sistemi_kisalt(sistem: str, hedef: int, aileye_ozel: str = "") -> str:
-    """Sistem prompt'u hedefi aşarsa önemsiz bölümleri sırayla çıkarır: önce 'doğal merak' bloğu, sonra aileye özel kılavuz."""
+    """Horde prompt'unu karakter kimliğini koruyarak, isteğe bağlı yönergeleri aşamalı çıkarır."""
     if len(sistem) <= hedef:
         return sistem
-    yeni = re.sub(r"\[DOĞAL MERAK VE SOHBETİ İLERLETME\].*?uydurma\.\n", "", sistem, count=1, flags=re.S)
+
+    orijinal_uzunluk = len(sistem)
+    yeni = sistem
+
+    # Önce uzunluğu yüksek, karakter kimliğinin parçası olmayan isteğe bağlı sohbet
+    # yönergelerini çıkar. Temel karakter tanımı, ilişki/geçmiş bilgisi ve sahne
+    # bilgileri bu aşamalarda özellikle korunur.
+    temizleme_adimlari = [
+        # Ayrı ve isteğe bağlı doğal merak/sohbeti ilerletme bloğu
+        lambda s: re.sub(
+            r"\[DOĞAL MERAK VE SOHBETİ İLERLETME\].*?uydurma\.\n",
+            "", s, count=1, flags=re.S
+        ),
+        # Horde'da ayrıca tekrar eden sahne/sohbet akışı yönergeleri
+        lambda s: re.sub(
+            r"\[SAHNE DEVAMLILIĞI\].*?(?=\n\s*\[|\Z)",
+            "", s, count=1, flags=re.S | re.I
+        ),
+        # Ayrı hikâye anlatım biçimi bloğu; hikâye modunun ana kuralları kalır
+        lambda s: re.sub(
+            r"\[HİKÂYE ANLATIMI.*?\].*?(?=\n\s*\[|\Z)",
+            "", s, count=1, flags=re.S | re.I
+        ),
+    ]
+
+    for adim in temizleme_adimlari:
+        if len(yeni) <= hedef:
+            break
+        aday = adim(yeni)
+        if aday != yeni:
+            yeni = aday
+
     if len(yeni) > hedef and aileye_ozel:
         yeni = yeni.replace(aileye_ozel, "")
-    logging.info("Horde sistem prompt'u kısaltıldı (%s -> %s karakter, hedef %s).", len(sistem), len(yeni), hedef)
+
+    # En son çare: sistem prompt'unun sonundaki genel/ek yönergeleri azalt.
+    # Karakter tanımının başını veya ortasını kesmek yerine yalnızca ek talimat
+    # bölümünden ilerle; hedefe ulaşamıyorsa güvenli biçimde daha uzun bırak.
+    yeni = re.sub(r"\n{3,}", "\n\n", yeni).strip()
+    logging.info(
+        "Horde sistem prompt'u kısaltıldı (%s -> %s karakter, hedef %s).",
+        orijinal_uzunluk, len(yeni), hedef
+    )
+    if len(yeni) > hedef:
+        logging.warning(
+            "Horde sistem prompt'u hedefin üzerinde kaldı (%s/%s); karakter kimliğini kesmemek için zorla kırpılmadı.",
+            len(yeni), hedef
+        )
     return yeni
 
 
@@ -965,14 +1009,15 @@ async def _horde_cevap(sistem_horde: str, messages: list, karakter_key: str, rp:
     )
     try:
         token_limiti = (
-            _env_int("AI_HORDE_MAX_TOKENS_RP", 550)
+            min(512, max(1, _env_int("AI_HORDE_MAX_TOKENS_RP", 512)))
             if (rp or hikaye)
-            else _env_int("AI_HORDE_MAX_TOKENS", 450)
+            else min(512, max(1, _env_int("AI_HORDE_MAX_TOKENS", 512)))
         )
         aday = ""
         dusunce_adayi = ""
         for deneme in range(2):
-            max_token = token_limiti if deneme == 0 else max(token_limiti + 1, min(token_limiti * 2, 1200))
+            # İkinci deneme de 512 token sınırını aşmaz; kudos maliyetini yükseltmesin.
+            max_token = min(512, token_limiti)
             ham = await asyncio.to_thread(
                 ai_horde_uret_sync, horde_mesajlari, max_token,
                 horde_on_ek(),   # Cevabı hareketle başlatmaz; yalnızca (varsa) boş düşünce bloğu.
