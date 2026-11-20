@@ -373,6 +373,39 @@ def gunluk_prompt(durum: dict, karakter: str | None = None, limit: int = 8) -> s
     )
 
 
+
+def karakter_hafizasini_temizle(durum: dict, karakter: str | None = None) -> None:
+    """Tek karakterin sohbet, uzun hafıza ve günlük kayıtlarını temizler."""
+    karakter = _karakter_anahtari(durum, karakter)
+    for alan_adi in ("hafizalar", "uzun_hafiza", "gunluk", "sahneler", "sahne_hafizasi"):
+        alan = durum.setdefault(alan_adi, {})
+        if isinstance(alan, dict):
+            alan[karakter] = [] if alan_adi in ("hafizalar", "uzun_hafiza", "gunluk") else ""
+
+
+def tum_hafizayi_temizle(durum: dict) -> None:
+    """Tüm karakter hafızalarını, profili ve ilişki ilerlemesini sıfırlar.
+
+    Seçili karakter, Telegram sohbeti ve kullanıcının görünüm/stil tercihi korunur.
+    """
+    sifir_liste_alanlari = (
+        "hafizalar", "uzun_hafiza", "gunluk", "tanismalar", "yakinlik",
+        "iliski", "duygular", "karakter_sirlari", "dunya", "yan_karakterler",
+        "son_olaylar", "sahneler", "sahne_hafizasi", "seviye_foto_gonderildi",
+    )
+    for alan_adi in sifir_liste_alanlari:
+        durum[alan_adi] = {}
+
+    durum["kullanici_profili"] = {"ad": "", "yas": None, "bilgiler": []}
+    durum["cevapsiz"] = 0
+    durum["son_kullanici"] = time.time()
+    durum["son_etkilesim"] = time.time()
+    durum["son_proaktif_foto"] = 0
+    durum["proaktif_foto_gun"] = ""
+    durum["proaktif_foto_sayi"] = 0
+    durum["proaktif_gun"] = ""
+    durum["proaktif_sayi"] = 0
+
 def hafiza_istatistigi(durum: dict) -> dict:
     """Hafızanın boyutunu ve karakter bazında kayıt sayılarını raporlar."""
     kisa = durum.get("hafizalar", {})

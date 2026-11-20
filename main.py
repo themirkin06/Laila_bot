@@ -751,8 +751,9 @@ async def sahne_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🎬 Sahne güncellendi: {metin}")
 
 
-# --- Seçili karakterin sohbetini sıfırla ---
+# --- Hafıza temizleme komutları ---
 async def sifirla_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Yalnızca seçili karakterin kısa sohbet geçmişini temizler."""
     if not yetkili_mi(update):
         return
     user_id = update.effective_user.id
@@ -760,10 +761,61 @@ async def sifirla_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not durum:
         await update.message.reply_text("Önce /start ile bir karakter seç.")
         return
-    karakter_adi = KARAKTERLER[durum["karakter"]]["isim"]
-    durum["hafizalar"][durum["karakter"]] = []
+    karakter = durum["karakter"]
+    karakter_adi = KARAKTERLER[karakter]["isim"]
+    hafizalar = durum.setdefault("hafizalar", {})
+    if not isinstance(hafizalar, dict):
+        hafizalar = {}
+        durum["hafizalar"] = hafizalar
+    hafizalar[karakter] = []
     await durum_kaydet(user_id)
-    await update.message.reply_text(f"{karakter_adi} ile olan sohbet geçmişi silindi. Diğer karakterlere dokunulmadı.")
+    await update.message.reply_text(
+        f"{karakter_adi} ile kısa sohbet geçmişin temizlendi. "
+        "Uzun süreli anılar, günlük notlar ve yakınlık puanın korundu."
+    )
+
+
+async def hafizatemizle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Seçili karakterin tüm hafıza kayıtlarını temizler; yakınlık korunur."""
+    if not yetkili_mi(update):
+        return
+    user_id = update.effective_user.id
+    durum = kullanici_durumu.get(user_id)
+    if not durum:
+        await update.message.reply_text("Önce /start ile bir karakter seç.")
+        return
+    karakter = durum["karakter"]
+    karakter_adi = KARAKTERLER[karakter]["isim"]
+    karakter_hafizasini_temizle(durum, karakter)
+    await durum_kaydet(user_id)
+    await update.message.reply_text(
+        f"{karakter_adi} için kısa sohbet geçmişi, uzun süreli anılar, "
+        "günlük notlar ve sahne hafızası temizlendi. Yakınlık puanın korundu."
+    )
+
+
+async def tamtemizle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Tüm hafızayı ve ilişki ilerlemesini onayla temizler."""
+    if not yetkili_mi(update):
+        return
+    user_id = update.effective_user.id
+    durum = kullanici_durumu.get(user_id)
+    if not durum:
+        await update.message.reply_text("Önce /start ile bir karakter seç.")
+        return
+
+    klavye = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Evet, her şeyi sıfırla", callback_data=f"tamtemizle_onay_{user_id}"),
+        InlineKeyboardButton("Vazgeç", callback_data=f"tamtemizle_iptal_{user_id}"),
+    ]])
+    await update.message.reply_text(
+        "⚠️ *Tam sıfırlama onayı*\n\n"
+        "Bütün karakterlerin sohbet geçmişleri, uzun süreli anıları, günlükleri, "
+        "kullanıcı profilin ve tüm yakınlık/ilişki puanların silinecek. "
+        "Bu işlem geri alınamaz.\n\nDevam etmek istiyor musun?",
+        reply_markup=klavye,
+        parse_mode="Markdown",
+    )
 
 
 # --- Buton Tıklamalarını Yakalama ---
@@ -773,6 +825,31 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not yetkili_mi(update):
         return
     user_id = query.from_user.id
+
+    if query.data.startswith("tamtemizle_onay_"):
+        hedef_id = query.data.rsplit("_", 1)[-1]
+        if str(user_id) != hedef_id:
+            await query.edit_message_text("Bu onay isteği sana ait değil.")
+            return
+        durum = kullanici_durumu.get(user_id)
+        if not durum:
+            await query.edit_message_text("Kullanıcı kaydı bulunamadı. İşlem yapılmadı.")
+            return
+        tum_hafizayi_temizle(durum)
+        await durum_kaydet(user_id)
+        await query.edit_message_text(
+            "🧹 Tam sıfırlama tamamlandı. Tüm karakterlerin hafızaları, "
+            "profilin ve yakınlık puanların temizlendi. Seçili karakterin ve stil tercihin korundu."
+        )
+        return
+
+    if query.data.startswith("tamtemizle_iptal_"):
+        hedef_id = query.data.rsplit("_", 1)[-1]
+        if str(user_id) != hedef_id:
+            await query.edit_message_text("Bu işlem sana ait değil.")
+            return
+        await query.edit_message_text("Tam sıfırlama iptal edildi. Hiçbir bilgi silinmedi.")
+        return
 
     if query.data.startswith("gal_"):
         parca = query.data.split("_", 1)[1]
@@ -1143,6 +1220,8 @@ def main():
     application.add_handler(CommandHandler("karakter", start_command))
     application.add_handler(CommandHandler("ses", ses_command))
     application.add_handler(CommandHandler("sifirla", sifirla_command))
+    application.add_handler(CommandHandler("hafizatemizle", hafizatemizle_command))
+    application.add_handler(CommandHandler("tamtemizle", tamtemizle_command))
     application.add_handler(CommandHandler("stil", stil_command))
     application.add_handler(CommandHandler("hikaye", hikaye_command))
     application.add_handler(CommandHandler("sahne", sahne_command))
