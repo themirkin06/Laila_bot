@@ -143,52 +143,6 @@ def hafizayi_kirp(hafiza: list):
         del hafiza[:-limit]
 
 
-def sahne_olayi_ekle(durum: dict, karakter: str, kullanici_mesaji: str, karakter_cevabi: str, limit: int = 5) -> str:
-    """Son etkileşimleri karaktere özel sahne devamlılığı olarak saklar.
-
-    Bu kayıtlar kesin konum/eylem iddiası üretmez; konuşmada gerçekten geçen
-    ifadeleri kısa alıntılar halinde korur. Böylece model sahneyi yeniden
-    başlatmak yerine son ortak bağlamı görebilir.
-    """
-    karakter = _karakter_anahtari(durum, karakter)
-    alan = durum.setdefault("sahne_olaylari", {})
-    if not isinstance(alan, dict):
-        alan = {}
-        durum["sahne_olaylari"] = alan
-    olaylar = alan.setdefault(karakter, [])
-    if not isinstance(olaylar, list):
-        olaylar = []
-        alan[karakter] = olaylar
-
-    kullanici = " ".join(str(kullanici_mesaji or "").split()).strip()[:170]
-    cevap = " ".join(str(karakter_cevabi or "").split()).strip()[:230]
-    if kullanici or cevap:
-        olaylar.append({
-            "zaman": datetime.now(timezone.utc).astimezone().isoformat(),
-            "kullanici": kullanici,
-            "karakter": cevap,
-        })
-        del olaylar[:-max(1, int(limit))]
-
-    satirlar = ["[OTOMATİK SAHNE DEVAMLILIĞI — SON ETKİLEŞİMLER]"]
-    for olay in olaylar:
-        if not isinstance(olay, dict):
-            continue
-        if olay.get("kullanici"):
-            satirlar.append(f"Kullanıcı: {olay['kullanici']}")
-        if olay.get("karakter"):
-            satirlar.append(f"Karakter: {olay['karakter']}")
-    satirlar.append(
-        "Bu kayıtlar son konuşmada geçen olaylardır. Açıkça ayrılma, zaman atlaması "
-        "veya mekân değişikliği söylenmedikçe mevcut sahneyi ve birlikte bulunma "
-        "durumunu sebepsiz yere sıfırlama. Kullanıcının yanında olmadığını varsayma; "
-        "kayıtlar çelişiyorsa en yeni açık ifadeyi esas al. Kayıtlarda olmayan ayrıntıyı uydurma."
-    )
-    notu = "\n".join(satirlar)
-    durum.setdefault("sahne_hafizasi", {})[karakter] = notu[:2400]
-    return durum["sahne_hafizasi"][karakter]
-
-
 def kullanici_profili_al(durum: dict) -> dict:
     """Kullanıcının açıkça söylediği, hassas olmayan bilgileri döndürür."""
     profil = durum.setdefault("kullanici_profili", {})
@@ -421,12 +375,29 @@ def gunluk_prompt(durum: dict, karakter: str | None = None, limit: int = 8) -> s
 
 
 def karakter_hafizasini_temizle(durum: dict, karakter: str | None = None) -> None:
-    """Tek karakterin sohbet, uzun hafıza ve günlük kayıtlarını temizler."""
+    """Yalnızca belirtilen karakterin hafızasını ve ilişki ilerlemesini sıfırlar."""
     karakter = _karakter_anahtari(durum, karakter)
-    for alan_adi in ("hafizalar", "uzun_hafiza", "gunluk", "sahneler", "sahne_hafizasi", "sahne_olaylari"):
+    liste_alanlari = {
+        "hafizalar", "uzun_hafiza", "gunluk", "sahne_olaylari", "son_olaylar",
+    }
+    metin_alanlari = {"sahneler", "sahne_hafizasi"}
+    karakter_alanlari = (
+        "hafizalar", "uzun_hafiza", "gunluk", "sahneler", "sahne_hafizasi",
+        "sahne_olaylari", "son_olaylar", "tanismalar", "yakinlik", "iliski",
+        "duygular", "karakter_sirlari", "dunya", "yan_karakterler",
+        "seviye_foto_gonderildi",
+    )
+    for alan_adi in karakter_alanlari:
         alan = durum.setdefault(alan_adi, {})
-        if isinstance(alan, dict):
-            alan[karakter] = [] if alan_adi in ("hafizalar", "uzun_hafiza", "gunluk", "sahne_olaylari") else ""
+        if not isinstance(alan, dict):
+            alan = {}
+            durum[alan_adi] = alan
+        if alan_adi in liste_alanlari:
+            alan[karakter] = []
+        elif alan_adi in metin_alanlari:
+            alan.pop(karakter, None)
+        else:
+            alan.pop(karakter, None)
 
 
 def tum_hafizayi_temizle(durum: dict) -> None:
@@ -437,7 +408,8 @@ def tum_hafizayi_temizle(durum: dict) -> None:
     sifir_liste_alanlari = (
         "hafizalar", "uzun_hafiza", "gunluk", "tanismalar", "yakinlik",
         "iliski", "duygular", "karakter_sirlari", "dunya", "yan_karakterler",
-        "son_olaylar", "sahneler", "sahne_hafizasi", "sahne_olaylari", "seviye_foto_gonderildi",
+        "son_olaylar", "sahneler", "sahne_hafizasi", "sahne_olaylari",
+        "seviye_foto_gonderildi",
     )
     for alan_adi in sifir_liste_alanlari:
         durum[alan_adi] = {}

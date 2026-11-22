@@ -768,6 +768,36 @@ async def sifirla_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"{karakter_adi} ile olan sohbet geçmişi silindi. Diğer karakterlere dokunulmadı.")
 
 
+# --- Seçili karakterin hafızasını ve ilişki ilerlemesini sıfırla ---
+async def tamtemizle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not yetkili_mi(update):
+        return
+    user_id = update.effective_user.id
+    durum = kullanici_durumu.get(user_id)
+    if not durum:
+        await update.message.reply_text("Önce /start ile bir karakter seç.")
+        return
+
+    onay = " ".join(context.args).strip().casefold()
+    if onay != "onayla":
+        await update.message.reply_text(
+            "⚠️ SEÇİLİ KARAKTERİN HAFIZASI VE İLİŞKİSİ SİLİNECEK!\n\n"
+            "Yalnızca seçili karakterin sohbet geçmişi, uzun süreli anıları, günlükleri, "
+            "sahne kayıtları ve yakınlık puanları sıfırlanacak. Diğer karakterler korunacak.\n\n"
+            "Kesinleştirmek için: /tamtemizle onayla"
+        )
+        return
+
+    secili_karakter = durum["karakter"]
+    karakter_adi = KARAKTERLER[secili_karakter]["isim"]
+    karakter_hafizasini_temizle(durum, secili_karakter)
+    await durum_kaydet(user_id)
+    await update.message.reply_text(
+        f"🧹 {karakter_adi} ile olan hafızan ve yakınlık puanın sıfırlandı. "
+        "Diğer karakterlerin kayıtları korundu."
+    )
+
+
 # --- Buton Tıklamalarını Yakalama ---
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1093,6 +1123,7 @@ def main():
     application.add_handler(CommandHandler("karakter", start_command))
     application.add_handler(CommandHandler("ses", ses_command))
     application.add_handler(CommandHandler("sifirla", sifirla_command))
+    application.add_handler(CommandHandler("tamtemizle", tamtemizle_command))
     application.add_handler(CommandHandler("stil", stil_command))
     application.add_handler(CommandHandler("hikaye", hikaye_command))
     application.add_handler(CommandHandler("sahne", sahne_command))
