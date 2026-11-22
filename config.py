@@ -11,7 +11,7 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 # kendi Telegram ID'ni yaz (@userinfobot'tan öğrenebilirsin). Boş bırakırsan herkese açık olur.
 OWNER_ID = int(os.getenv("OWNER_ID", "0") or 0)
 
-HAFIZA_LIMITI = 40
+HAFIZA_LIMITI = 100  # Karakter başına saklanan son sohbet mesajı (50 kullanıcı-asistan turu)
 TZ = ZoneInfo("Europe/Istanbul")  # Türkiye'nin kurallarıyla gerçek yerel saat
 
 # Kendiliğinden mesaj atma ayarları

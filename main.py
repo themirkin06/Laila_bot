@@ -110,6 +110,7 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("stil", "hikaye")
     d.setdefault("sahneler", {})
     d.setdefault("sahne_hafizasi", {})  # karakter bazında kalıcı son sahne notu
+    d.setdefault("sahne_olaylari", {})  # son etkileşimlerden otomatik sahne devamlılığı
     # Yeni ilişki ve dünya alanları: eski Redis kayıtlarına zarar vermeden eklenir.
     d.setdefault("iliski", {})
     d.setdefault("duygular", {})
@@ -739,12 +740,14 @@ async def sahne_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if metin.lower() in ("sifirla", "sıfırla", "otomatik"):
         durum["sahneler"].pop(key, None)
         durum.setdefault("sahne_hafizasi", {}).pop(key, None)
+        durum.setdefault("sahne_olaylari", {}).pop(key, None)
         await durum_kaydet(user_id)
         await update.message.reply_text("🎬 Sahne yakınlık seviyene göre otomatiğe döndü.")
         return
     metin = metin[:300]
     durum["sahneler"][key] = metin
     durum.setdefault("sahne_hafizasi", {})[key] = metin
+    durum.setdefault("sahne_olaylari", {})[key] = []
     hafiza_al(durum).append({"role": "assistant", "content": f"*Sahne değişir: {metin}*"})
     await durum_kaydet(user_id)
     await update.message.reply_text(f"🎬 Sahne güncellendi: {metin}")
@@ -964,6 +967,8 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         hafiza.append({"role": "user", "content": user_message})
         hafiza.append({"role": "assistant", "content": hafiza_kaydi("", cevap)})
         hafizayi_kirp(hafiza)
+        # Her başarılı turdan sonra sahnenin son 5 etkileşimini ayrı kaydet.
+        sahne_olayi_ekle(durum, secilen_karakter, user_message, cevap)
         durum["son_etkilesim"] = time.time()
         await durum_kaydet(user_id)
 

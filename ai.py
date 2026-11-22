@@ -259,7 +259,7 @@ AI_HORDE_MODELS = os.getenv(
 ).strip()
 AI_HORDE_KEY = os.getenv("AI_HORDE_API_KEY", "").strip() or "0000000000"   # 0000000000 = anonim (en düşük öncelik)
 AI_HORDE_URL = "https://aihorde.net/api/v2"
-AI_HORDE_GECMIS = _env_int("AI_HORDE_GECMIS", 14)  # Horde'a giden son mesaj sayısı (bağlam taşmasın)
+AI_HORDE_GECMIS = max(2, min(30, _env_int("AI_HORDE_GECMIS", 24)))  # En fazla 24 geçmiş mesaj; karakter bütçesi gerekirse daha da azaltır.
 AI_HORDE_PROMPT_BUTCE = _env_int("AI_HORDE_PROMPT_BUTCE", 9000)  # Toplam prompt karakter bütçesi (Türkçede ~2.5 karakter/token; 4096 bağlam - çıktı payı). Aşarsa en eski mesajlar atılır.
 AI_HORDE_BEKLEME = max(5, min(120, _env_int("AI_HORDE_MAX_WAIT", 20)))  # saniye (en fazla 120)
 AI_HORDE_POLL = 2.0
