@@ -374,6 +374,71 @@ def gunluk_prompt(durum: dict, karakter: str | None = None, limit: int = 8) -> s
 
 
 
+
+def sahne_olayi_ekle(
+    durum: dict,
+    karakter: str,
+    kullanici_mesaji: str,
+    karakter_yaniti: str,
+    limit: int = 5,
+) -> bool:
+    """Seçili karakterin son sahne etkileşimlerini ayrı bir listede tutar."""
+    karakter = _karakter_anahtari(durum, karakter)
+    kullanici_mesaji = " ".join(str(kullanici_mesaji or "").split()).strip()
+    karakter_yaniti = " ".join(str(karakter_yaniti or "").split()).strip()
+    if not kullanici_mesaji and not karakter_yaniti:
+        return False
+
+    olaylar = durum.setdefault("sahne_olaylari", {})
+    if not isinstance(olaylar, dict):
+        olaylar = {}
+        durum["sahne_olaylari"] = olaylar
+
+    kayitlar = olaylar.get(karakter)
+    if not isinstance(kayitlar, list):
+        kayitlar = []
+        olaylar[karakter] = kayitlar
+
+    kayitlar.append({
+        "zaman": datetime.now(timezone.utc).astimezone().isoformat(),
+        "kullanici": kullanici_mesaji[:500],
+        "karakter": karakter_yaniti[:700],
+    })
+    del kayitlar[:-max(1, int(limit))]
+    return True
+
+
+def sahne_olaylari_prompt(durum: dict, karakter: str, limit: int = 5) -> str:
+    """Son sahne etkileşimlerini yalnızca ilgili karakter için prompt'a ekler."""
+    olaylar = durum.get("sahne_olaylari", {})
+    if not isinstance(olaylar, dict):
+        return ""
+
+    kayitlar = olaylar.get(_karakter_anahtari(durum, karakter), [])
+    if not isinstance(kayitlar, list):
+        return ""
+
+    secilenler = [
+        kayit for kayit in kayitlar[-max(1, int(limit)):]
+        if isinstance(kayit, dict)
+        and (kayit.get("kullanici") or kayit.get("karakter"))
+    ]
+    if not secilenler:
+        return ""
+
+    satirlar = []
+    for kayit in secilenler:
+        kullanici = str(kayit.get("kullanici", "")).strip()[:350]
+        yanit = str(kayit.get("karakter", "")).strip()[:450]
+        satirlar.append(f"Kullanıcı: {kullanici}\nKarakter: {yanit}")
+
+    return (
+        "[SON SAHNE ETKİLEŞİMLERİ — kronolojik bağlam]\n"
+        + "\n".join(satirlar)
+        + "\nBu kayıtları olmuş olaylar olarak kabul et; aynı olayları tekrar yaşatma "
+          "ve daha yeni konuşma açıkça değiştirmedikçe sahne sürekliliğini koru."
+    )
+
 def karakter_hafizasini_temizle(durum: dict, karakter: str | None = None) -> None:
     """Yalnızca belirtilen karakterin hafızasını ve ilişki ilerlemesini sıfırlar."""
     karakter = _karakter_anahtari(durum, karakter)

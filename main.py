@@ -949,7 +949,10 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         if sahne_notu else
         "[SAHNE HAFIZASI] Ayrı bir sahne notu yok; hikâye ortamını ve son konuşmalardaki eylemleri esas al, sebepsiz yer/iş değişikliği yapma."
     )
+    sahne_olay_notu = sahne_olaylari_prompt(durum, secilen_karakter)
     ekstra_sistem = profil_notu + "\n\n" + tanisma_notu + "\n\n" + sahne_devamlilik
+    if sahne_olay_notu:
+        ekstra_sistem += "\n\n" + sahne_olay_notu
 
     # Yakınlık puanı (soğuma hesabı için en başta) ve sayaçlar
     eski_sev, yeni_sev = yakinlik_ekle(durum, user_message)
