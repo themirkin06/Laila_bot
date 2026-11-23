@@ -701,29 +701,15 @@ def _son_mesajlar(liste: list, n) -> list:
 
 
 def horde_son_mesaji_butceye_sigdir(sistem: str, son_mesaj: dict) -> dict:
-    """Son kullanıcı mesajını prompt bütçesine sığdırır.
-
-    Mesaja her zaman en az HORDE_SON_MESAJ_MIN karakterlik pay ayrılır: bütçe dar olsa bile
-    kullanıcının cümlesi boşalmaz ya da başından kesilip anlamsızlaşmaz. Açığı sistem prompt'unun
-    kısaltılması kapatır (bkz. horde_sistemi_kisalt).
-    """
+    """Son kullanıcı mesajını kesmeden korur; alanı önce sistem ve geçmişten kazanılır."""
     mesaj = dict(son_mesaj or {})
     icerik = str(mesaj.get("content", ""))
-    taban = min(len(icerik), HORDE_SON_MESAJ_MIN)
-    kalan = max(taban, int(AI_HORDE_PROMPT_BUTCE) - len(sistem) - 40)
-    if len(icerik) > kalan:
-        # Uzun mesajın hem başındaki talimatı hem sonundaki ayrıntıları koru.
-        ayirac = "\n[… mesaj bütçe nedeniyle kısaltıldı …]\n"
-        veri_butcesi = max(0, kalan - len(ayirac))
-        bas = max(1, int(veri_butcesi * 0.65))
-        son = max(0, veri_butcesi - bas)
-        mesaj["content"] = icerik[:bas] + ayirac + (icerik[-son:] if son else "")
-        logging.warning("Horde son kullanıcı mesajı bütçeye sığmadığı için kısaltıldı (%s -> %s karakter).",
-                        len(icerik), len(mesaj["content"]))
-    if len(sistem) + len(str(mesaj.get("content", ""))) + 40 > AI_HORDE_PROMPT_BUTCE:
-        logging.warning("Horde prompt'u bütçeyi aşıyor (sistem %s + mesaj %s > %s karakter); "
-                        "sistem metni kısaltılamadı, AI_HORDE_PROMPT_BUTCE değerini veya karakter prompt'larını gözden geçir.",
-                        len(sistem), len(str(mesaj.get("content", ""))), AI_HORDE_PROMPT_BUTCE)
+    if len(sistem) + len(icerik) + 40 > AI_HORDE_PROMPT_BUTCE:
+        logging.warning(
+            "Horde sistem + son kullanıcı mesajı bütçeyi aşıyor (%s + %s > %s karakter); "
+            "son kullanıcı mesajı kesilmedi.",
+            len(sistem), len(icerik), AI_HORDE_PROMPT_BUTCE
+        )
     return mesaj
 
 
@@ -736,7 +722,7 @@ def horde_sistemi_kisalt(sistem: str, hedef: int, aileye_ozel: str = "") -> str:
     yeni = sistem
     # Önce tekrarlanabilir/ikincil talimat bloklarını çıkar.
     yeni = re.sub(
-        r"\\[DOĞAL MERAK VE SOHBETİ İLERLETME\\].*?uydurma\\.\\n?",
+        r"\[DOĞAL MERAK VE SOHBETİ İLERLETME\].*?uydurma\.\n?",
         "", yeni, count=1, flags=re.S
     )
     if len(yeni) > hedef and aileye_ozel:
@@ -745,20 +731,20 @@ def horde_sistemi_kisalt(sistem: str, hedef: int, aileye_ozel: str = "") -> str:
     # Hâlâ uzunsa tekrar eden boşlukları ve uzun yönerge paragraflarını
     # sondan başlayarak azalt. Karakter tanımı prompt'un başında kalır.
     if len(yeni) > hedef:
-        paragraflar = yeni.split("\\n\\n")
-        while len("\\n\\n".join(paragraflar)) > hedef and len(paragraflar) > 2:
+        paragraflar = yeni.split("\n\n")
+        while len("\n\n".join(paragraflar)) > hedef and len(paragraflar) > 2:
             # Sondan en uzun paragrafı kaldır; son paragrafın çekirdek kapanışını koru.
             adaylar = range(1, max(1, len(paragraflar) - 1))
             idx = max(adaylar, key=lambda i: len(paragraflar[i]), default=None)
             if idx is None:
                 break
             paragraflar.pop(idx)
-        yeni = "\\n\\n".join(paragraflar)
+        yeni = "\n\n".join(paragraflar)
 
     # Tek bir uzun blok hâlâ hedefi aşıyorsa baştaki karakter/bağlamı
     # ve sondaki temel davranış talimatlarını birlikte koruyarak kes.
     if len(yeni) > hedef:
-        isaret = "\\n[… yönerge bütçesi nedeniyle kısaltıldı …]\\n"
+        isaret = "\n[… yönerge bütçesi nedeniyle kısaltıldı …]\n"
         pay = max(0, hedef - len(isaret))
         bas = int(pay * 0.78)
         son = pay - bas
@@ -819,7 +805,15 @@ def horde_butceye_sigdir(sistem: str, gecmis: list, son_mesaj: dict) -> list:
             "(sistem %s karakter, bütçe %s karakter).",
             len(gecmis) - len(secilen), len(secilen), len(sistem), AI_HORDE_PROMPT_BUTCE,
         )
-    return list(reversed(secilen))
+    sonuc = list(reversed(secilen))
+    logging.info(
+        "Horde gönderim özeti: geçmişten %s mesaj + son kullanıcı mesajı = %s mesaj; "
+        "sistem %s karakter, geçmiş %s karakter, son mesaj %s karakter.",
+        len(sonuc), len(sonuc) + 1, len(sistem),
+        sum(len(str(m.get("content", ""))) for m in sonuc),
+        len(str(son_mesaj.get("content", ""))),
+    )
+    return sonuc
 
 
 def horde_gecmisi_hazirla(gecmis: list) -> list:
@@ -1008,7 +1002,7 @@ def _sistem_horde_olustur(sistem_temel, dogal_sohbet_kilavuzu, ek, karakter_key,
         + aileye_ozel_kilavuz
     )
 
-    hedef = max(2000, AI_HORDE_PROMPT_BUTCE - HORDE_SON_MESAJ_MIN - 800)  # son mesaja ve biraz geçmişe yer bırak
+    hedef = max(2500, min(5000, int(AI_HORDE_PROMPT_BUTCE * 0.55)))  # karakter kimliğini koru, geçmişe daha çok alan bırak
     return horde_sistemi_kisalt(sistem_horde, hedef, aileye_ozel_kilavuz)
 
 
@@ -1037,6 +1031,11 @@ async def _routeway_cevap(messages: list, karakter_key: str):
 
 async def _horde_cevap(sistem_horde: str, messages: list, karakter_key: str, rp: bool, hikaye: bool):
     """AI Horde'dan (düşünce, cevap) üretir; başarısızlıkta None döner (sonraki mesajda yeniden denenir)."""
+    # Son kullanıcı mesajını korumak için önce sistem prompt'unu daralt.
+    son_icerik_uzunlugu = len(str(messages[-1].get("content", "")))
+    sistem_hedefi = max(1200, AI_HORDE_PROMPT_BUTCE - son_icerik_uzunlugu - 200)
+    if len(sistem_horde) > sistem_hedefi:
+        sistem_horde = horde_sistemi_kisalt(sistem_horde, sistem_hedefi)
     horde_son_mesaj = horde_son_mesaji_butceye_sigdir(sistem_horde, messages[-1])
     horde_mesajlari = (
         [{"role": "system", "content": sistem_horde}]
