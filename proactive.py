@@ -40,6 +40,9 @@ async def proaktif_kontrol(app, b):
 
         karakter_key = d["karakter"]
         karakter = b["KARAKTERLER"][karakter_key]
+        # Karakter uyuyorsa (ör. Merve/Ece sabahları) kendiliğinden mesaj atma.
+        if b["karakter_durumu"](karakter_key).get("uykuda"):
+            continue
         chat_id = d["chat_id"]
         saat = max(1, int(sessizlik // 3600))
         sev = b["yakinlik_seviyesi"](b["yakinlik_puani"](d, karakter_key))
@@ -72,6 +75,11 @@ async def proaktif_kontrol(app, b):
                 "Mesajında küçük, gerçekçi bir an paylaş: örneğin 'çay içiyorum', 'kahvemi aldım' "
                 "veya 'seni özledim, sana bir kare yollayayım dedim'. Fotoğrafla çelişen bir etkinlik anlatma."
             )
+
+        ekstra += "\n\n" + b["zaman_notu"](karakter_key, d.get("son_kullanici_ts"))
+        uzun_not = b["hafiza_baglami"](d, karakter_key)
+        if uzun_not:
+            ekstra += "\n\n" + uzun_not
 
         try:
             dusunce, cevap = await b["llm_cevap"](

@@ -1114,3 +1114,17 @@ async def llm_cevap(karakter_key: str, hafiza: list, kullanici_icerik: str, ekst
         cevap = await turkce_duzelt(cevap)
     cevap = emoji_dogal_uygula(cevap, karakter_key)
     return dusunce, cevap  # yalnızca ayrı etiketli kurgusal iç ses gösterilir
+
+
+
+async def hafiza_ozeti_uret(mesajlar: list) -> str:
+    """Hafıza özeti için seçili sağlayıcıyı kısa, ayrı bir çağrıyla kullanır; hata olursa boş döner."""
+    try:
+        if LLM_PROVIDER == "routeway" and ROUTEWAY_API_KEY:
+            return await asyncio.to_thread(routeway_uret_sync, mesajlar, 60, 300)
+        if AI_HORDE_ACIK:
+            ham = await asyncio.to_thread(ai_horde_uret_sync, mesajlar, 200, "")
+            return horde_metni_temizle(ham)
+    except Exception as hata:
+        logging.warning("Hafıza özeti üretilemedi: %s", hata)
+    return ""

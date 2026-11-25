@@ -4,6 +4,8 @@ Karakterlerin gün içindeki rutinlerini ve kullanıcı durumunda saklanan
 mekân, yan karakter, sır ve son olay bağlamını yönetir.
 """
 import random
+import re
+import time
 from datetime import datetime, date
 
 from config import TZ
@@ -336,3 +338,152 @@ def dunya_ozeti(durum: dict, karakter_key: str) -> str:
         return ""
     # Eski veya büyük kayıtların sistem mesajını gereksiz büyütmesini engelle.
     return "[Dünya notları]\n" + "\n".join(bolumler[-16:])[:1800]
+
+
+# ---------------------------------------------------------------------------
+# Gerçek zaman bilgisi (her stilde — hikâye, roleplay, normal — prompt'a girer)
+# ---------------------------------------------------------------------------
+def _gecen_sure_metni(saniye: float) -> str:
+    saniye = max(0, int(saniye))
+    if saniye < 120:
+        return "birkaç saniye önce"
+    if saniye < 3600:
+        return f"yaklaşık {saniye // 60} dakika önce"
+    if saniye < 86400:
+        return f"yaklaşık {saniye // 3600} saat önce"
+    gun = saniye // 86400
+    return "dün" if gun == 1 else f"{gun} gün önce"
+
+
+def zaman_notu(karakter_key: str, onceki_kullanici_ts: float | None = None, simdi: datetime | None = None) -> str:
+    """Türkiye saatini, karakterin o saatteki durumunu ve son mesajdan beri geçen süreyi verir."""
+    bilgi = karakter_durumu(karakter_key, simdi)
+    saat = bilgi["datetime"].hour
+    dilim = {"sabah": "sabah", "gunduz": "gündüz", "aksam": "akşam", "gece": "gece"}[zaman_dilimi(saat)]
+    satirlar = [
+        "[ŞU ANKİ GERÇEK ZAMAN — KESİN BİLGİ]",
+        f"Şu an Türkiye'de {bilgi['gun']}, {bilgi['tarih']}, saat {bilgi['saat']} ({dilim}); mevsim {bilgi['mevsim']}.",
+        f"Senin şu anki durumun: {bilgi['durum']}.",
+    ]
+    if bilgi["ozel_gun"]:
+        satirlar.append(f"Bugün özel gün: {bilgi['ozel_gun']}.")
+    if onceki_kullanici_ts:
+        satirlar.append(
+            f"Kullanıcının bir önceki mesajı {_gecen_sure_metni(time.time() - onceki_kullanici_ts)} geldi."
+            " Aradan uzun süre geçtiyse bunu fark et (özledim, uyuyakalmışım, işteydim gibi), geçmediyse hiç değinme."
+        )
+    satirlar.append(
+        "Selamlaşma, 'bugün/bu akşam/yarın', yemek ve uyku gibi zamana bağlı her şeyde bu saati esas al; "
+        "saatle çelişen şey söyleme (öğlen 'günaydın', gece yarısı 'öğle yemeği' deme). "
+        "Sahne metninde farklı bir gün/saat geçiyorsa yer ve kişileri koru ama günün saatini bu bilgiye göre anlat. "
+        "Saati sadece sorulduğunda veya doğal olduğunda söyle; her mesajda tekrarlama."
+    )
+    return "\n".join(satirlar)
+
+
+# ---------------------------------------------------------------------------
+# Yan karakterler: ana karakterin konuşması sırasında komutsuz, doğal söz alırlar.
+# Modelden `{Ad}` etiketiyle yazması istenir; main.py ayrı Telegram mesajı olarak yollar.
+# ---------------------------------------------------------------------------
+YAN_KARAKTERLER = {
+    "leyla": [
+        {"ad": "Nermin", "rol": "komşusu, 55 yaşında, meraklı ve konuşkan", "ton": "sıcak, 'Leyla'cığım' der, lafı dolandırır", "olay": "kitapçıya çay almaya uğradı"},
+        {"ad": "Cemal", "rol": "yayınevi temsilcisi, kibar ve acelesi var", "ton": "resmî ama nazik", "olay": "kitap sevkiyatıyla geldi"},
+    ],
+    "merve": [
+        {"ad": "Efe", "rol": "küçük kardeşi, 15 yaşında, sinir bozucu ama sevimli", "ton": "alaycı, kısa cümleler", "olay": "ondan bir şey istemeye geldi"},
+        {"ad": "İdil", "rol": "yakın arkadaşı, dedikoducu", "ton": "heyecanlı, bol 'kızzz'", "olay": "yanına oturdu"},
+    ],
+    "asli": [
+        {"ad": "Selin", "rol": "iş arkadaşı ve asistanı, çalışkan", "ton": "saygılı ama samimi", "olay": "kapıdan başını uzattı"},
+    ],
+    "dilek": [
+        {"ad": "Sevil", "rol": "öğretmen arkadaşı, şakacı", "ton": "neşeli, takılır", "olay": "yanına çay getirdi"},
+        {"ad": "Annesi", "rol": "annesi, endişeli ve ilgili", "ton": "şefkatli, 'kızım' der", "olay": "telefonla aradı"},
+    ],
+    "ece": [
+        {"ad": "Deniz", "rol": "felsefe bölümünden arkadaşı, tartışmayı sever", "ton": "esprili, hafif iğneleyici", "olay": "yanına uğradı"},
+    ],
+    "ayse": [
+        {"ad": "Fatma", "rol": "komşusu, en yakın dedikodu ortağı", "ton": "yüksek sesli, neşeli, Karadeniz şivesi", "olay": "kapıya geldi"},
+        {"ad": "Elif", "rol": "kızı, Ankara'da yaşıyor, telefonla arar", "ton": "tatlı sert, 'anne' der", "olay": "telefonla aradı"},
+    ],
+    "dondu": [
+        {"ad": "Doruk", "rol": "sürünün genç kurt adamı, saygılı ve acemi", "ton": "heyecanlı, kısa", "olay": "haber getirdi"},
+        {"ad": "Hatice", "rol": "yaşlı şifacı, bilge ve esprili", "ton": "yavaş, sakin", "olay": "otlarla geldi"},
+    ],
+}
+
+YAN_ETIKET = re.compile(r"\{\s*([^{}\n]{2,30}?)\s*\}")
+
+
+def yan_karakter_bul(karakter_key: str, ad: str):
+    ad = str(ad).strip().casefold()
+    for k in YAN_KARAKTERLER.get(karakter_key, []):
+        if k["ad"].casefold() == ad:
+            return k
+    return None
+
+
+def yan_karakter_notu(durum: dict, karakter_key: str, olasilik: float = 0.18, min_arali: int = 6, rng=None) -> str:
+    """Bu tur için yan karakter izni/devamı notu üretir. Sıklığı kod belirler, model değil."""
+    rng = rng or random
+    adaylar = YAN_KARAKTERLER.get(karakter_key, [])
+    if not adaylar:
+        return ""
+    alan = durum.setdefault("yan_aktif", {})
+    kayit = alan.setdefault(karakter_key, {"ad": "", "kalan": 0, "tur_sayaci": 99})
+    kayit["tur_sayaci"] = int(kayit.get("tur_sayaci", 99)) + 1
+    bilgi = karakter_durumu(karakter_key)
+
+    if kayit.get("ad") and int(kayit.get("kalan", 0)) > 0:
+        k = yan_karakter_bul(karakter_key, kayit["ad"])
+        if k:
+            return (
+                f"[YAN KARAKTER YANINDA] {k['ad']} ({k['rol']}) hâlâ yanında. Gerekirse ona da kısa söz ver: "
+                f"yeni satıra {{{k['ad']}}} yazıp konuşmasını ekle (ton: {k['ton']}). "
+                "Konu bittiyse veya sıra sende ise sadece sen konuş; uygun bir anda onun gittiğini doğal biçimde belirt."
+            )
+    if bilgi["uykuda"] or kayit["tur_sayaci"] < min_arali or rng.random() > olasilik:
+        return ""
+    k = rng.choice(adaylar)
+    return (
+        f"[YAN KARAKTER FIRSATI] Bu mesajda istersen kısa bir doğal araya girme olabilir: {k['ad']} ({k['rol']}) "
+        f"{k['olay']}. Ancak konu romantik/özel/duygusal bir an ise veya sahneye uymuyorsa hiç ekleme. "
+        f"Eklersen ana mesajını yaz, sonra yeni satıra {{{k['ad']}}} yazıp onun 1-2 kısa cümlesini ekle "
+        f"(ton: {k['ton']}). Kullanıcı adına konuşma; yalnızca bu tek yan karakteri kullan; en fazla bir kez konuştur."
+    )
+
+
+def yan_konusmalari_ayir(metin: str):
+    """Metni (ad|None, parça) listesine böler. Etiketsiz kısım ana karakterindir."""
+    metin = str(metin or "")
+    sonuc, son, ad = [], 0, None
+    for m in YAN_ETIKET.finditer(metin):
+        onceki = metin[son:m.start()].strip()
+        if onceki:
+            sonuc.append((ad, onceki))
+        ad, son = m.group(1).strip(), m.end()
+    kalan = metin[son:].strip()
+    if kalan:
+        sonuc.append((ad, kalan))
+    return sonuc or [(None, metin.strip())]
+
+
+def ana_karakter_metni(metin: str) -> str:
+    """Yan karakter satırlarını çıkarıp yalnızca ana karakterin sözünü döndürür (ses/foto tespiti için)."""
+    return " ".join(p for ad, p in yan_konusmalari_ayir(metin) if ad is None).strip()
+
+
+def yan_karakter_durumunu_guncelle(durum: dict, karakter_key: str, cevap: str, kalma_turu: int = 2):
+    """Cevapta yan karakter konuştuysa onu aktif işaretler; yoksa kalan turu azaltır. Konuşan adı döndürür."""
+    kayit = durum.setdefault("yan_aktif", {}).setdefault(karakter_key, {"ad": "", "kalan": 0, "tur_sayaci": 99})
+    konusanlar = [ad for ad, _ in yan_konusmalari_ayir(cevap) if ad and yan_karakter_bul(karakter_key, ad)]
+    if konusanlar:
+        ad = yan_karakter_bul(karakter_key, konusanlar[0])["ad"]
+        yeni = kayit.get("ad") != ad
+        kayit.update({"ad": ad, "kalan": kalma_turu, "tur_sayaci": 0})
+        return ad if yeni else ""
+    if int(kayit.get("kalan", 0)) > 0:
+        kayit["kalan"] = int(kayit["kalan"]) - 1
+    return ""

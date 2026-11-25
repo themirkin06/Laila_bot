@@ -450,7 +450,7 @@ def karakter_hafizasini_temizle(durum: dict, karakter: str | None = None) -> Non
         "hafizalar", "uzun_hafiza", "gunluk", "sahneler", "sahne_hafizasi",
         "sahne_olaylari", "son_olaylar", "tanismalar", "yakinlik", "iliski",
         "duygular", "karakter_sirlari", "dunya", "yan_karakterler",
-        "seviye_foto_gonderildi",
+        "seviye_foto_gonderildi", "yan_aktif", "ozet_sayaci",
     )
     for alan_adi in karakter_alanlari:
         alan = durum.setdefault(alan_adi, {})
@@ -474,12 +474,13 @@ def tum_hafizayi_temizle(durum: dict) -> None:
         "hafizalar", "uzun_hafiza", "gunluk", "tanismalar", "yakinlik",
         "iliski", "duygular", "karakter_sirlari", "dunya", "yan_karakterler",
         "son_olaylar", "sahneler", "sahne_hafizasi", "sahne_olaylari",
-        "seviye_foto_gonderildi",
+        "seviye_foto_gonderildi", "yan_aktif", "ozet_sayaci",
     )
     for alan_adi in sifir_liste_alanlari:
         durum[alan_adi] = {}
 
     durum["kullanici_profili"] = {"ad": "", "yas": None, "bilgiler": []}
+    durum["son_kullanici_ts"] = None
     durum["cevapsiz"] = 0
     durum["son_kullanici"] = time.time()
     durum["son_etkilesim"] = time.time()
@@ -508,3 +509,66 @@ def hafiza_istatistigi(durum: dict) -> dict:
             if isinstance(gunluk, dict) and isinstance(v, list)
         } if isinstance(gunluk, dict) else {},
     }
+
+
+
+# ---------------------------------------------------------------------------
+# Otomatik uzun süreli hafıza: eski mesajlar kırpılmadan önce kısa notlara özetlenir.
+# ---------------------------------------------------------------------------
+OZET_TUR_ARALIGI = 8      # her 8 kullanıcı mesajında bir özet çıkar
+OZET_PENCERE = 16         # özetlenecek son mesaj sayısı (user+assistant)
+
+
+def ozet_gerekli_mi(durum: dict, karakter: str | None = None) -> bool:
+    """Karakter için sayaç 8 kullanıcı turuna ulaştıysa True döner (sayacı artırır)."""
+    karakter = _karakter_anahtari(durum, karakter)
+    sayaclar = durum.setdefault("ozet_sayaci", {})
+    if not isinstance(sayaclar, dict):
+        sayaclar = durum["ozet_sayaci"] = {}
+    sayaclar[karakter] = int(sayaclar.get(karakter, 0)) + 1
+    if sayaclar[karakter] >= OZET_TUR_ARALIGI:
+        sayaclar[karakter] = 0
+        return True
+    return False
+
+
+def ozet_mesajlari(hafiza: list, karakter_adi: str) -> list:
+    """Özet için LLM'e gidecek mesaj listesini hazırlar."""
+    satirlar = []
+    for m in hafiza[-OZET_PENCERE:]:
+        if not isinstance(m, dict):
+            continue
+        kim = "Kullanıcı" if m.get("role") == "user" else karakter_adi
+        satirlar.append(f"{kim}: {str(m.get('content', ''))[:400]}")
+    konusma = "\n".join(satirlar)
+    return [
+        {"role": "system", "content": (
+            "Sen bir not alma yardımcısısın. Aşağıdaki sohbetten, ileride hatırlanması gereken KALICI bilgileri çıkar: "
+            "kullanıcının söylediği kişiler, planlar, tercihler, yaşanan önemli olaylar, verilen sözler, karakterle aranızdaki ilişki gelişmeleri. "
+            "En fazla 4 madde yaz; her madde tek kısa Türkçe cümle olsun, '- ' ile başlasın. "
+            "Sohbette olmayan bir şeyi uydurma. Önemli bir şey yoksa sadece 'YOK' yaz. Başka açıklama ekleme."
+        )},
+        {"role": "user", "content": konusma},
+    ]
+
+
+def ozet_notlarini_isle(durum: dict, ham: str, karakter: str | None = None) -> int:
+    """Özet çıktısındaki maddeleri uzun hafızaya ekler; eklenen sayısını döndürür."""
+    sayi = 0
+    ham = str(ham or "").strip()
+    if not ham or ham.upper().startswith("YOK"):
+        return 0
+    for satir in ham.splitlines():
+        satir = satir.strip().lstrip("-•*0123456789. ").strip()
+        if 6 <= len(satir) <= 300 and not satir.upper().startswith("YOK"):
+            if uzun_hafiza_ekle(durum, satir, karakter, tur="özet", kaynak="otomatik"):
+                sayi += 1
+            if sayi >= 4:
+                break
+    return sayi
+
+
+def hafiza_baglami(durum: dict, karakter: str | None = None) -> str:
+    """Uzun süreli anılar + günlük kayıtlarını tek bir prompt bloğunda verir."""
+    parcalar = [uzun_hafiza_prompt(durum, karakter, limit=8), gunluk_prompt(durum, karakter, limit=3)]
+    return "\n\n".join(p for p in parcalar if p)

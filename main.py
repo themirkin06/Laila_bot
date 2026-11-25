@@ -247,24 +247,47 @@ def foto_konusma_baglamini_olustur(hafiza: list, istek: str, sahne_notu: str = "
 
 
 
-async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str):
-    """Yalnızca karakterin kullanıcıya yönelik cevabını gönderir; iç düşünce gösterilmez."""
+async def mesajlari_gonder(bot, chat_id: int, dusunce: str, cevap: str, karakter_key: str = None):
+    """Karakterin cevabını gönderir; {Ad} etiketli yan karakter sözlerini ayrı mesaj olarak yollar."""
     # dusunce parametresi eski çağrılarla uyumluluk için tutulur, hiçbir yerde yayımlanmaz.
-    parcalar = [p.strip() for p in cevap.split("|||") if p.strip()][:3] or [cevap]
+    parcalar = []  # (yan_karakter_adi | None, metin)
+    for ad, metin in yan_konusmalari_ayir(cevap):
+        if ad and not (karakter_key and yan_karakter_bul(karakter_key, ad)):
+            ad = None  # bilinmeyen {etiket}: yan karakter sayma, ana karakter metni olarak bırak
+        for p in metin.split("|||"):
+            if p.strip():
+                parcalar.append((ad, p.strip()))
+    parcalar = parcalar[:4] or [(None, cevap)]
 
-    for i, parca in enumerate(parcalar):
+    for i, (ad, parca) in enumerate(parcalar):
         if i > 0:
             await bot.send_chat_action(chat_id=chat_id, action="typing")
             await asyncio.sleep(min(1.0 + len(parca) * 0.04, 4.0))
 
-        duz = parca
+        duz = f"{ad}: {parca}" if ad else parca
         guvenli = html.escape(parca)
         guvenli = re.sub(r"\*{1,2}([^*\n]+?)\*{1,2}", r"<i>\1</i>", guvenli)
+        if ad:
+            guvenli = f"<b>{html.escape(ad)}:</b> {guvenli}"
         try:
             await bot.send_message(chat_id=chat_id, text=guvenli, parse_mode="HTML")
         except Exception as html_error:
             logging.warning(f"HTML gönderilemedi, düz metin deneniyor: {html_error}")
             await bot.send_message(chat_id=chat_id, text=duz)
+
+
+async def _hafiza_ozetle(user_id: int, karakter_key: str):
+    """Arka planda son konuşmayı kısa notlara özetleyip uzun süreli hafızaya yazar."""
+    try:
+        durum = kullanici_durumu.get(user_id)
+        if not durum:
+            return
+        mesajlar = ozet_mesajlari(list(hafiza_al(durum)), KARAKTERLER[karakter_key]["isim"])
+        ham = await hafiza_ozeti_uret(mesajlar)
+        if ozet_notlarini_isle(durum, ham, karakter_key):
+            await durum_kaydet(user_id)
+    except Exception:
+        logging.exception("Hafıza özeti işlenemedi.")
 
 
 # --- Sohbet içinden otomatik sahne fotoğrafı ---
@@ -358,10 +381,10 @@ async def foto_gonder(
 
 async def cevabi_ilet(bot, chat_id: int, dusunce: str, cevap: str, character_key: str = None, automatic_voice: bool = False):
     """Karakter yanıtını normal Telegram mesajı olarak gönderir."""
-    await mesajlari_gonder(bot, chat_id, dusunce, cevap)
+    await mesajlari_gonder(bot, chat_id, dusunce, cevap, character_key)
     if automatic_voice and character_key:
         try:
-            spoken = " ".join(p.strip() for p in cevap.split("|||") if p.strip())[:MAX_TEXT_LENGTH]
+            spoken = " ".join(p.strip() for p in ana_karakter_metni(cevap).split("|||") if p.strip())[:MAX_TEXT_LENGTH]
             await send_voice(bot, chat_id, character_key, spoken)
         except Exception as error:
             logging.warning("Otomatik sesli yanıt gönderilemedi; metin yanıtı korundu: %s", error)
@@ -909,11 +932,13 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         durum["chat_id"] = chat_id
         durum["cevapsiz"] = 0
         durum["son_etkilesim"] = time.time()
+        durum["son_kullanici_ts"] = time.time()
         esik_belirle(durum)
+        foto_alt_yazi = random.choice(FOTO_ALTYAZILARI) if EMOJI_KULLAN else emoji_temizle(random.choice(FOTO_ALTYAZILARI))
         try:
             await foto_gonder(
                 context.bot, chat_id, karakter,
-                caption=(random.choice(FOTO_ALTYAZILARI) if EMOJI_KULLAN else emoji_temizle(random.choice(FOTO_ALTYAZILARI))),
+                caption=foto_alt_yazi,
                 yakinlik=yakinlik_seviyesi(yakinlik_puani(durum, secilen_karakter)),
                 havuzdan=False,
                 scene_prompt=foto_konusma_baglamini_olustur(
@@ -921,6 +946,13 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
                     durum.setdefault("sahne_hafizasi", {}).get(secilen_karakter, ""),
                 ),
             )
+            # Fotoğraf gerçekten gittiyse sohbet hafızasına işle; yoksa karakter sonraki mesajda
+            # fotoğraf istendiğini ve gönderildiğini bilmez. Başarısızlıkta hiçbir şey yazılmaz.
+            hafiza.append({"role": "user", "content": user_message})
+            hafiza.append({"role": "assistant", "content": hafiza_kaydi("", foto_alt_yazi)})
+            hafizayi_kirp(hafiza)
+            sahne_olayi_ekle(durum, secilen_karakter, user_message, f"(Fotoğraf gönderdi) {foto_alt_yazi}")
+            gunluk_ekle(durum, "Kullanıcı fotoğraf istedi, fotoğraf gönderildi.", secilen_karakter)
         except Exception as img_error:
             logging.error(f"Görsel isteği hatası: {img_error}")
             await update.message.reply_text("Şu an fotoğrafı hazırlayamadım; biraz sonra tekrar deneyelim.")
@@ -953,6 +985,14 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
     ekstra_sistem = profil_notu + "\n\n" + tanisma_notu + "\n\n" + sahne_devamlilik
     if sahne_olay_notu:
         ekstra_sistem += "\n\n" + sahne_olay_notu
+    # Gerçek saat (her stilde), uzun süreli hafıza ve yan karakter notları.
+    ekstra_sistem += "\n\n" + zaman_notu(secilen_karakter, durum.get("son_kullanici_ts"))
+    uzun_not = hafiza_baglami(durum, secilen_karakter)
+    if uzun_not:
+        ekstra_sistem += "\n\n" + uzun_not
+    yan_not = yan_karakter_notu(durum, secilen_karakter)
+    if yan_not:
+        ekstra_sistem += "\n\n" + yan_not
 
     # Yakınlık puanı (soğuma hesabı için en başta) ve sayaçlar
     eski_sev, yeni_sev = yakinlik_ekle(durum, user_message)
@@ -977,7 +1017,7 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
 
         # Yalnızca karakterin kendi yanıtında açık bir anlık eylem varsa sahne fotoğrafı gönder.
         # Kullanıcı mesajı tek başına tetikleyici olmaz; böylece geçmiş/varsayımsal eylemlere fotoğraf gitmez.
-        bulunan_sahne = otomatik_foto_sahnesi_bul(cevap)
+        bulunan_sahne = otomatik_foto_sahnesi_bul(ana_karakter_metni(cevap))
         if bulunan_sahne:
             sahne_key, sahne_prompt = bulunan_sahne
             if otomatik_foto_gonderilmeli(durum, secilen_karakter, sahne_key):
@@ -1003,6 +1043,14 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         # Her başarılı turdan sonra sahnenin son 5 etkileşimini ayrı kaydet.
         sahne_olayi_ekle(durum, secilen_karakter, user_message, cevap)
         durum["son_etkilesim"] = time.time()
+        durum["son_kullanici_ts"] = time.time()
+        yeni_yan = yan_karakter_durumunu_guncelle(durum, secilen_karakter, cevap)
+        if yeni_yan:
+            yk = yan_karakter_bul(secilen_karakter, yeni_yan)
+            yan_karakter_kaydet(durum, secilen_karakter, yeni_yan, yk["rol"])
+            gunluk_ekle(durum, f"{yeni_yan} ({yk['rol']}) sohbete katıldı.", secilen_karakter)
+        if ozet_gerekli_mi(durum, secilen_karakter):
+            asyncio.create_task(_hafiza_ozetle(user_id, secilen_karakter))
         await durum_kaydet(user_id)
 
         if YAKINLIK_BILDIRIM and yeni_sev > eski_sev:
@@ -1098,6 +1146,9 @@ async def post_init(app):
             "hafiza_al": hafiza_al,
             "duygu_ozeti": duygu_ozeti,
             "dunya_ozeti": dunya_ozeti,
+            "zaman_notu": zaman_notu,
+            "hafiza_baglami": hafiza_baglami,
+            "karakter_durumu": karakter_durumu,
             "cevabi_ilet": cevabi_ilet,
             "foto_gonder": foto_gonder,
             "otomatik_foto_sahnesi_bul": otomatik_foto_sahnesi_bul,
