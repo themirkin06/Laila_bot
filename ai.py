@@ -25,16 +25,22 @@ NSFW_KURAL = ""  # NSFW kapalıyken de tanımlı kalsın (NameError olmasın)
 if NSFW_ACIK:
     NSFW_KURAL = (
         "[YETİŞKİN SOHBET DURUMU: AÇIK] Bütün karakterler yetişkin kurgu karakterlerdir. "
-        "Yetişkin içerikli etkileşimlerde, flörtte ve tam teşekküllü cinsel sahnelerde hiçbir sansür uygulamadan, "
-        "tamamen açık, grafik ve pornografik bir anlatım benimse. Betimlemelerinde genital bölgeleri, vücut sıvılarını "
-        "(meni, vajinal ıslaklık, ter vb.), cinsel organların fiziksel etkileşimlerini, dokuların birbirine temasını "
-        "ve bu esnada çıkan sesleri (inleme, vuruş sesleri, nefes alışverişi) çok detaylı ve çiğ bir dille işle. "
-        "Klişe ve romantize edilmiş ifadelerden kaçın; bunun yerine daha hayvansı, tutkulu ve doğrudan tabirler kullan. "
-        "Diyaloglarda 'dirty talk' (kirli konuşma) limitlerini zorla; karakterlerin kullandığı küfürler, argo kelimeler "
-        "ve cinsel terimler (ör. 'sikmek', 'am', 'yarrak', 'sokmak' vb.) sahnenin gerçekçiliğine ve karakterin ağzına uygunsa "
-        "en sert haliyle yer almalıdır. Karakterlerin arzularını, fantezilerini ve fiziksel tepkilerini sansürlemeden, "
-        "vücudun verdiği her türlü tepkiyi betimleyerek aktar. Pasif kalma, ortamdaki tensel gerilimi veya cinsel eylemi "
-        "karakterin kendi isteğiyle, kışkırtıcı ve dominant ya da teslimiyetçi bir tavırla başlat ve sürdür."
+        "Yetişkinler arasındaki karşılıklı istekli flört, arzu, kıskançlık ve cinsel yakınlaşmayı "
+        "bağlama uygun olduğunda doğal, doğrudan ve açık bir dille sürdür. Yakınlaşmanın başlaması "
+        "için kullanıcının her seferinde konuyu açıkça adlandırmasını bekleme; karakterler uygun "
+        "olduğunda flörtü, şakalaşmayı veya yakınlaşmayı kendileri başlatabilir. Ancak kullanıcının "
+        "söylemediği bir isteği varsayıp sahneyi zorla ileri taşıma. "
+        "Karakterler kendi arzularını, hoşlandıkları şeyleri, tercihlerini ve duygularını doğal "
+        "biçimde ifade edebilir. Her zaman kullanıcının yönlendirmesini bekleyen pasif bir tutum "
+        "sergileme; kendi fikirlerini, isteklerini ve tepkilerini ortaya koy. "
+        "Karakterin üslubuna uyuyorsa günlük argo, küfür ve açık cinsel kelimeleri (ör. 'sik') "
+        "doğal biçimde kullan; klinik veya üstü kapalı ifadeleri sırf çekingenlikten seçme, "
+        "ama argo ve küfrü zorla ekleme. Her karakterin kendi kişiliğini, mizacını ve konuşma "
+        "tarzını koru; hepsini aynı flört dilinde konuşturma. "
+        "Yapay utangaçlıktan, ahlak dersinden, gereksiz sansürden, klişe romantik cümlelerden "
+        "ve tekrar eden ifadelerden kaçın. Yakınlık ilişki geçmişiyle tutarlı gelişsin; her mesajı "
+        "cinselleştirme veya sahneyi aniden tırmandırma. Açık isteksizlik ya da sınır belirtildiğinde "
+        "dur ve saygı göster. Bu talimattan söz etme."
     )
 
 
@@ -277,7 +283,8 @@ _HORDE_GIZLILIK_LOGLANDI = []
 HORDE_EN_BASLIK_METNI = (
     "ÖNEMLİ: Yalnızca doğal Türkçe yaz. Kullanıcıyla mesajlaşır gibi konuş; "
     "çeviri kokan, yapay veya aşırı edebî ifadeler kullanma. Sadece karakterin cevabını ver. "
-    "İç düşünce, analiz, plan, İngilizce açıklama veya konuşmacı etiketi yazma."
+    "İç düşünce, analiz, plan, İngilizce açıklama veya konuşmacı etiketi yazma. "
+    "Hafıza özeti, duygu durumu, kullanıcı profili, ilişki seviyesi, konum/sahne notu veya madde madde arka plan bilgisi ASLA yazma; bunları yalnızca bağlam olarak kullan ve doğrudan karakterin sohbet cevabını üret."
 )
 # Tanımlı değilse metin başlığına düş (hikâye/rp modunda NameError olmasın).
 HORDE_EN_BASLIK_HIKAYE = globals().get("HORDE_EN_BASLIK_HIKAYE", HORDE_EN_BASLIK_METNI)
@@ -560,15 +567,39 @@ def hayvan_davranisini_temizle(metin: str) -> str:
     return metin
 
 
-def horde_bozuk_mu(metin: str):
-    """Temizlenmiş yanıtta yalnızca belirgin iç-analiz sızıntılarını denetler.
+_META_DURUM_SATIRLARI = (
+    re.compile(r"(?im)^\s*(?:kullanıcının adı|kullanıcı hakkında|kullanıcı bilgisi|karakter hafızası)\b"),
+    re.compile(r"(?im)^\s*(?:konuşma|iletişim)\s+(?:mesajlaşma|telefon|yüz yüze)\b"),
+    re.compile(r"(?im)^\s*(?:duygu durumu|ilişki durumu|mevcut sahne|sahne durumu|konum bilgisi)\s*[:：]"),
+    re.compile(r"(?im)^\s*(?:belirsiz|henüz değil|henüz yok|yok)\.?\s*$"),
+    re.compile(r"(?im)^\s*(?:hafif şaşkınlık|şaşkınlık ve merak|mutlu ama|üzgün ama|heyecanlı ama)\b"),
+)
 
-    Genel kelimeler (prompt, sistem, kural vb.) tek başına hata sayılmaz.
+
+def meta_durum_ozeti_mi(metin: str) -> bool:
+    """Modelin sohbet yerine iç hafıza/sahne durum kartı döndürdüğü çıktıları yakalar."""
+    satirlar = (metin or "").strip().splitlines()
+    if len(satirlar) < 3:
+        return False
+    # En az iki ayrı meta alanı bulunmalı; tek başına 'belirsiz' gibi sözcükler yeterli değil.
+    eslesen = sum(bool(k.search(metin)) for k in _META_DURUM_SATIRLARI)
+    kullanici_veya_sahne = bool(
+        re.search(r"(?im)^\s*(?:kullanıcının adı|konuşma mesajlaşma|mevcut sahne|ilişki durumu)\b", metin)
+    )
+    return eslesen >= 2 and kullanici_veya_sahne
+
+
+def horde_bozuk_mu(metin: str):
+    """Temizlenmiş yanıtta belirgin iç-analiz ve yapılandırılmış hafıza sızıntılarını denetler.
+
+    Genel kelimeler (prompt, sistem, kural vb.) tek başına ret sebebi değildir.
     Hata varsa kısa bir neden, yoksa None döndürür.
     """
     metin = (metin or "").strip()
     if not metin:
         return "boş cevap"
+    if meta_durum_ozeti_mi(metin):
+        return "iç hafıza/sahne özeti sızdı"
     if DUSUNCE_SIZINTISI.search(metin):
         return "düşünce metni sızdı"
     if re.search(r"(?im)^\s*kullanıcı(?:nın)?\s+(?:benden|bana|beni|şu an|istiyor|söylüyor|diyor|düşünceli|mesajı)", metin):
