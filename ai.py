@@ -919,7 +919,7 @@ def _sistem_prompt_parcalari(karakter_key, puan, stil, sahne, duygu_notu, dunya_
     sistem_temel = (
         KARAKTERLER[karakter_key]["prompt"]
         + "\n\n" + ortam
-        + "\n\n[MEVCUT SAHNE DURUMU] Yukarıdaki ortam/sahne başlangıç referansıdır. Konuşma geçmişinde daha sonra açıkça gerçekleşmiş bir hareket veya mekân değişikliği varsa en son durumu esas al. Geçiş yaşanmadıysa bu sahneyi koru; kendiliğinden başka yere sıçrama."
+        + "\n\n[MEVCUT KONUM VE SAHNE DURUMU] Başlangıçta kullanıcı ile karakter farklı yerlerdedir ve mesajlaşırlar; aynı ortamda olduklarını varsayma. Kullanıcının 'geliyorum/yanına geliyorum' demesi yalnızca yolda olduğu anlamına gelir, henüz varmış değildir. 'Geldim', 'kapıdayım', 'içeri girdim' gibi açık ifadeler varışı belirtir. Kullanıcı karakterden gelmesini isterse karakter yola çıkar; varış gerçekleşmeden aynı ortamda rol yapma. Birlikte oldukları açıkça kurulduğunda bu durumu koru; ayrılma ve yer değişikliğini yalnızca konuşmada açıkça gerçekleştiğinde uygula. Son konuşma geçmişi ve otomatik sahne olayları, genel başlangıç varsayımından daha önceliklidir. Karakterin kendi günlük mekânı, kullanıcının da orada bulunduğunu göstermez."
         + "\n\n" + yakinlik_ozeti(karakter_key, puan)
         + (("\n\n" + duygu_notu) if duygu_notu else "")
         + (("\n\n" + dunya_notu) if dunya_notu else "")

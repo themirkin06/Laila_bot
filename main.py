@@ -26,6 +26,7 @@ from config import *
 from characters import *
 from photos import *
 from memory import *
+from scene_memory import scene_state_context, update_scene_state
 from relationship import *
 from emotions import *
 from world import *
@@ -45,7 +46,7 @@ from voice import send_voice, MAX_TEXT_LENGTH
 
 
 # --- HİKÂYE MODU: her karakterin kendi hikâyesi ve sahneleri ---
-# Sahne, yakınlık seviyesiyle ilerler (0: Tanışıyorsunuz ... 3: Çok yakınsınız). Kullanıcı /sahne ile değiştirebilir.
+# Otomatik sahne devamlılığı ve karaktere göre yakınlık seviyeleri.
 
 
 
@@ -111,6 +112,7 @@ def durum_tamamla(d: dict) -> dict:
     d.setdefault("sahneler", {})
     d.setdefault("sahne_hafizasi", {})  # karakter bazında kalıcı son sahne notu
     d.setdefault("sahne_olaylari", {})  # son etkileşimlerden otomatik sahne devamlılığı
+    d.setdefault("scene_states", {})  # açıkça belirtilen konum ve buluşma durumu
     # Yeni ilişki ve dünya alanları: eski Redis kayıtlarına zarar vermeden eklenir.
     d.setdefault("iliski", {})
     d.setdefault("duygular", {})
@@ -693,10 +695,10 @@ async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ {KARAKTERLER[key]['isim']} havuzunda şimdi {len(FOTO_HAVUZU[key])} fotoğraf var.")
 
 
-# --- /stil, /hikaye, /sahne ---
+# --- /stil ve /hikaye ---
 STIL_SIRASI = ["hikaye", "roleplay", "mesaj"]
 STIL_ADLARI = {
-    "hikaye": "Hikâye (karakterle aynı ortamda, sahneli rol yapma)",
+    "hikaye": "Hikâye (konuşmaya göre gelişen sahneli rol yapma)",
     "roleplay": "Rol yapma (hareketler yıldız içinde, 2-4 cümle)",
     "mesaj": "Mesajlaşma (kısa, WhatsApp tarzı)",
 }
@@ -738,42 +740,9 @@ async def hikaye_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rutbe_satiri = f"🐺 Rütben: {rutbe}\n\n" if rutbe else ""
     await update.message.reply_text(
         f"📖 {KARAKTERLER[key]['isim']} hikâyesi\n\n{HIKAYE[key]['premise']}\n\n{rutbe_satiri}"
-        f"🎬 Şu anki sahne{' (senin seçtiğin)' if ozel else ''}:\n{sahne_metni(key, puan, ozel)}\n\n"
-        "Sahneyi değiştirmek için: /sahne <yeni sahne>. Otomatiğe dönmek için: /sahne sifirla"
+        f"🎬 Karakterin hikâye ortamı:\n{sahne_metni(key, puan, ozel)}\n\n"
+        "Konumunuz konuşmanın akışına göre belirlenir; yan yana olduğunuz varsayılmaz."
     )
-
-
-async def sahne_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/sahne <metin>: sahneyi sen belirlersin. /sahne sifirla: yakınlığa göre otomatiğe döner."""
-    if not yetkili_mi(update):
-        return
-    user_id = update.effective_user.id
-    durum = kullanici_durumu.get(user_id)
-    if not durum:
-        await update.message.reply_text("Önce /start ile bir karakter seç.")
-        return
-    key = durum["karakter"]
-    metin = " ".join(context.args).strip() if context.args else ""
-    if not metin:
-        await update.message.reply_text(
-            f"🎬 Şu anki sahne:\n{sahne_metni(key, yakinlik_puani(durum, key), durum['sahneler'].get(key))}\n\n"
-            "Değiştirmek için: /sahne akşam sahilde yürüyoruz\nOtomatiğe dönmek için: /sahne sifirla"
-        )
-        return
-    if metin.lower() in ("sifirla", "sıfırla", "otomatik"):
-        durum["sahneler"].pop(key, None)
-        durum.setdefault("sahne_hafizasi", {}).pop(key, None)
-        durum.setdefault("sahne_olaylari", {}).pop(key, None)
-        await durum_kaydet(user_id)
-        await update.message.reply_text("🎬 Sahne yakınlık seviyene göre otomatiğe döndü.")
-        return
-    metin = metin[:300]
-    durum["sahneler"][key] = metin
-    durum.setdefault("sahne_hafizasi", {})[key] = metin
-    durum.setdefault("sahne_olaylari", {})[key] = []
-    hafiza_al(durum).append({"role": "assistant", "content": f"*Sahne değişir: {metin}*"})
-    await durum_kaydet(user_id)
-    await update.message.reply_text(f"🎬 Sahne güncellendi: {metin}")
 
 
 # --- Seçili karakterin sohbetini sıfırla ---
@@ -880,13 +849,13 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Eski giriş metinleri bazı karakterlerde kullanıcıyı önceden tanıyormuş gibi başlıyordu.
             # İlk karşılaşmada bu varsayımı kaldırıp karaktere uygun, tarafsız bir selamlama kullan.
             ilk_girisler = {
-                "leyla": "*Kitapçının kapısındaki küçük çan çalar. Tezgâhın ardından başını kaldırıp gülümser.* Merhaba. Ben Leyla. Daha önce karşılaşmadık sanırım. Sana nasıl hitap edeyim?",
-                "merve": "*Kafede masasından başını kaldırıp sana bakar.* Selam, ben Merve. Sanırım daha önce tanışmadık. Senin adın ne?",
-                "asli": "*Toplantı odasının önünde elindeki dosyaları düzeltip sana döner.* Merhaba, ben Aslı. Sanırım tanışmıyoruz. Adını öğrenebilir miyim?",
-                "dilek": "*Apartman bahçesinde çiçekleri sularken sana gülümser.* Merhaba, ben Dilek. Seni daha önce görmedim galiba. Adın ne?",
-                "ece": "*Kitabını kapatıp merakla sana bakar.* Merhaba, ben Ece. Daha önce tanıştık mı, hatırlayamadım. Adın ne?",
-                "ayse": "*Mutfaktan elinde çay bardağıyla çıkar, sıcakça gülümser.* Hoş geldin kuzum. Ben Ayşe. Senin adın ne bakalım?",
-                "dondu": "*Ocağın ateşi çıtırdarken kehribar gözleriyle sana bakar.* Yeni gelen sensin demek. Ben Asena. Önce adını öğreneyim.",
+                "leyla": "Merhaba, ben Leyla. Kitapçıdan yazıyorum. Daha önce karşılaşmadık sanırım; sana nasıl hitap edeyim?",
+                "merve": "Selam! Ben Merve. Kampüsten yazıyorum; sanırım henüz doğru düzgün tanışmadık. Senin adın ne?",
+                "asli": "Merhaba, ben Aslı. Projeyle ilgili iletişim için yazıyorum. Sana nasıl hitap etmeliyim?",
+                "dilek": "Merhaba, ben Dilek; apartmandan komşunum. Numaranı kaydettim de selam vermek istedim. Nasılsın?",
+                "ece": "Merhaba, ben Ece. Kitap kulübünden. Geçen tartışma aklıma takıldı; seninle biraz daha konuşmak istedim.",
+                "ayse": "Alo kuzum, ben Ayşe Teyze. Numaran bende vardı, bir hâl hatır sorayım dedim. Nasılsın bakalım?",
+                "dondu": "Selam yabancı. Ben Asena. Bu dağların ötesinden sana yazıyorum; önce adını öğreneyim.",
             }
             giris = ilk_girisler.get(secilen_karakter, f"Merhaba, ben {karakter_adi}. Sanırım daha önce tanışmadık. Sana nasıl hitap edeyim?")
             await mesajlari_gonder(context.bot, chat_id, "", giris)
@@ -982,7 +951,10 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         "[SAHNE HAFIZASI] Ayrı bir sahne notu yok; hikâye ortamını ve son konuşmalardaki eylemleri esas al, sebepsiz yer/iş değişikliği yapma."
     )
     sahne_olay_notu = sahne_olaylari_prompt(durum, secilen_karakter)
-    ekstra_sistem = profil_notu + "\n\n" + tanisma_notu + "\n\n" + sahne_devamlilik
+    # Kullanıcının geliş/varış durumunu yanıt üretilmeden önce kaydet.
+    update_scene_state(durum, secilen_karakter, user_message, speaker="user")
+    scene_state_notu = scene_state_context(durum, secilen_karakter)
+    ekstra_sistem = profil_notu + "\n\n" + tanisma_notu + "\n\n" + sahne_devamlilik + "\n\n" + scene_state_notu
     if sahne_olay_notu:
         ekstra_sistem += "\n\n" + sahne_olay_notu
     # Gerçek saat (her stilde), uzun süreli hafıza ve yan karakter notları.
@@ -1040,7 +1012,8 @@ async def mesaji_isle(update: Update, context: ContextTypes.DEFAULT_TYPE, user_m
         hafiza.append({"role": "user", "content": user_message})
         hafiza.append({"role": "assistant", "content": hafiza_kaydi("", cevap)})
         hafizayi_kirp(hafiza)
-        # Her başarılı turdan sonra sahnenin son 5 etkileşimini ayrı kaydet.
+        # Karakterin kendi yanıtındaki açık konum değişikliklerini ve sahne olayını kaydet.
+        update_scene_state(durum, secilen_karakter, ana_karakter_metni(cevap), speaker="character")
         sahne_olayi_ekle(durum, secilen_karakter, user_message, cevap)
         durum["son_etkilesim"] = time.time()
         durum["son_kullanici_ts"] = time.time()
@@ -1180,7 +1153,6 @@ def main():
     application.add_handler(CommandHandler("tamtemizle", tamtemizle_command))
     application.add_handler(CommandHandler("stil", stil_command))
     application.add_handler(CommandHandler("hikaye", hikaye_command))
-    application.add_handler(CommandHandler("sahne", sahne_command))
     application.add_handler(CommandHandler("yakinlik", yakinlik_command))
     application.add_handler(CommandHandler("uret", uret_command))
     application.add_handler(CommandHandler("havuzdoldur", havuzdoldur_command))
