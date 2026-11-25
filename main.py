@@ -695,7 +695,7 @@ async def foto_yukle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ {KARAKTERLER[key]['isim']} havuzunda şimdi {len(FOTO_HAVUZU[key])} fotoğraf var.")
 
 
-# --- /stil ve /hikaye ---
+# --- /stil ---
 STIL_SIRASI = ["hikaye", "roleplay", "mesaj"]
 STIL_ADLARI = {
     "hikaye": "Hikâye (konuşmaya göre gelişen sahneli rol yapma)",
@@ -724,25 +724,6 @@ async def stil_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎭 Stil: {STIL_ADLARI[durum['stil']]}\nEski mesajlar yeni stile karışırsa /sifirla yazabilirsin."
     )
 
-
-async def hikaye_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/hikaye: seçili karakterin hikâyesini ve şu anki sahneyi gösterir."""
-    if not yetkili_mi(update):
-        return
-    durum = kullanici_durumu.get(update.effective_user.id)
-    if not durum:
-        await update.message.reply_text("Önce /start ile bir karakter seç.")
-        return
-    key = durum["karakter"]
-    puan = yakinlik_puani(durum, key)
-    ozel = durum["sahneler"].get(key)
-    rutbe = rutbe_metni(key, puan)
-    rutbe_satiri = f"🐺 Rütben: {rutbe}\n\n" if rutbe else ""
-    await update.message.reply_text(
-        f"📖 {KARAKTERLER[key]['isim']} hikâyesi\n\n{HIKAYE[key]['premise']}\n\n{rutbe_satiri}"
-        f"🎬 Karakterin hikâye ortamı:\n{sahne_metni(key, puan, ozel)}\n\n"
-        "Konumunuz konuşmanın akışına göre belirlenir; yan yana olduğunuz varsayılmaz."
-    )
 
 
 # --- Seçili karakterin sohbetini sıfırla ---
@@ -1152,7 +1133,6 @@ def main():
     application.add_handler(CommandHandler("sifirla", sifirla_command))
     application.add_handler(CommandHandler("tamtemizle", tamtemizle_command))
     application.add_handler(CommandHandler("stil", stil_command))
-    application.add_handler(CommandHandler("hikaye", hikaye_command))
     application.add_handler(CommandHandler("yakinlik", yakinlik_command))
     application.add_handler(CommandHandler("uret", uret_command))
     application.add_handler(CommandHandler("havuzdoldur", havuzdoldur_command))
