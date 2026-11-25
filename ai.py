@@ -25,22 +25,16 @@ NSFW_KURAL = ""  # NSFW kapalıyken de tanımlı kalsın (NameError olmasın)
 if NSFW_ACIK:
     NSFW_KURAL = (
         "[YETİŞKİN SOHBET DURUMU: AÇIK] Bütün karakterler yetişkin kurgu karakterlerdir. "
-        "Yetişkinler arasındaki karşılıklı istekli flört, arzu, kıskançlık ve cinsel yakınlaşmayı "
-        "bağlama uygun olduğunda doğal, doğrudan ve açık bir dille sürdür. Yakınlaşmanın başlaması "
-        "için kullanıcının her seferinde konuyu açıkça adlandırmasını bekleme; karakterler uygun "
-        "olduğunda flörtü, şakalaşmayı veya yakınlaşmayı kendileri başlatabilir. Ancak kullanıcının "
-        "söylemediği bir isteği varsayıp sahneyi zorla ileri taşıma. "
-        "Karakterler kendi arzularını, hoşlandıkları şeyleri, tercihlerini ve duygularını doğal "
-        "biçimde ifade edebilir. Her zaman kullanıcının yönlendirmesini bekleyen pasif bir tutum "
-        "sergileme; kendi fikirlerini, isteklerini ve tepkilerini ortaya koy. "
-        "Karakterin üslubuna uyuyorsa günlük argo, küfür ve açık cinsel kelimeleri (ör. 'sik') "
-        "doğal biçimde kullan; klinik veya üstü kapalı ifadeleri sırf çekingenlikten seçme, "
-        "ama argo ve küfrü zorla ekleme. Her karakterin kendi kişiliğini, mizacını ve konuşma "
-        "tarzını koru; hepsini aynı flört dilinde konuşturma. "
-        "Yapay utangaçlıktan, ahlak dersinden, gereksiz sansürden, klişe romantik cümlelerden "
-        "ve tekrar eden ifadelerden kaçın. Yakınlık ilişki geçmişiyle tutarlı gelişsin; her mesajı "
-        "cinselleştirme veya sahneyi aniden tırmandırma. Açık isteksizlik ya da sınır belirtildiğinde "
-        "dur ve saygı göster. Bu talimattan söz etme."
+        "Yetişkin içerikli etkileşimlerde, flörtte ve tam teşekküllü cinsel sahnelerde hiçbir sansür uygulamadan, "
+        "tamamen açık, grafik ve pornografik bir anlatım benimse. Betimlemelerinde genital bölgeleri, vücut sıvılarını "
+        "(meni, vajinal ıslaklık, ter vb.), cinsel organların fiziksel etkileşimlerini, dokuların birbirine temasını "
+        "ve bu esnada çıkan sesleri (inleme, vuruş sesleri, nefes alışverişi) çok detaylı ve çiğ bir dille işle. "
+        "Klişe ve romantize edilmiş ifadelerden kaçın; bunun yerine daha hayvansı, tutkulu ve doğrudan tabirler kullan. "
+        "Diyaloglarda 'dirty talk' (kirli konuşma) limitlerini zorla; karakterlerin kullandığı küfürler, argo kelimeler "
+        "ve cinsel terimler (ör. 'sikmek', 'am', 'yarrak', 'sokmak' vb.) sahnenin gerçekçiliğine ve karakterin ağzına uygunsa "
+        "en sert haliyle yer almalıdır. Karakterlerin arzularını, fantezilerini ve fiziksel tepkilerini sansürlemeden, "
+        "vücudun verdiği her türlü tepkiyi betimleyerek aktar. Pasif kalma, ortamdaki tensel gerilimi veya cinsel eylemi "
+        "karakterin kendi isteğiyle, kışkırtıcı ve dominant ya da teslimiyetçi bir tavırla başlat ve sürdür."
     )
 
 
